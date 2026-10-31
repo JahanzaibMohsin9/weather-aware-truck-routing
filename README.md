@@ -13,7 +13,7 @@ A React + Django web app that helps a truck driver choose the safest route betwe
 
 The driver enters an origin, a destination, a departure date/time and the load weight in pounds. The app then:
 
-1. Gets **3 route options** from a routing API.
+1. Gets **3 route options** from a routing API, topping up with extra requests when the API returns fewer.
 2. Places a **checkpoint every 10, 25 or 50 miles** along each route (the driver picks the interval, default 25).
 3. Works out the truck's **estimated arrival time** at each checkpoint and fetches the forecast for that place at that time.
 4. Classifies each checkpoint as **Low, Moderate, High, Severe or No Travel** using the wind, rain and snow thresholds and the load-weight rules.
@@ -81,9 +81,11 @@ These are choices where the brief leaves room for interpretation. Details are in
 - **Wind** is the sustained 10 m wind speed, not gusts. Gusts are shown for information only.
 - **Rain** is Open-Meteo's `rain + showers`, so convective storms count.
 - **Weather at a checkpoint** uses the forecast hour covering the truck's ETA there.
+- **Miles per checkpoint:** each mile of road takes the level of its nearest checkpoint, so the origin and destination count too.
 - **ETAs** come from the routing API's travel times along the route and assume continuous driving, with no Hours-of-Service breaks.
-- **No Travel routes:** the brief's ranking doesn't mention No Travel, so any route with a No Travel segment ranks after every route without one and is flagged as not recommended.
-- **Forecast horizon:** checkpoints whose ETA is beyond the forecast range are shown as "no forecast", not as Low risk.
+- **Ranking order:** risk comes before travel time, following the brief's preference list. Values are compared unrounded; rounding is for display only.
+- **No Travel routes:** the brief's ranking doesn't mention No Travel, so any route with a No Travel checkpoint ranks after every route without one and is flagged as not recommended.
+- **Forecast horizon:** departures can be up to 14 days ahead. Checkpoints whose ETA is still beyond the forecast are shown as "No Forecast", not as Low risk, and a route with such gaps ranks after fully covered routes.
 - **Heatmap time:** slider hour 0 is the departure hour.
 
 ## Known limitations

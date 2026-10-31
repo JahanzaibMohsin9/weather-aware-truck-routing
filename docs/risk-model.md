@@ -42,6 +42,8 @@ Neighbouring ranges in the table share their end values (rain 0.10–0.25 and 0.
 | 45–54 mph | > 30,000 lb | No Travel |
 | 35–44 mph | > 40,000 lb | at least Severe |
 
+A checkpoint whose ETA is past the end of the forecast gets the level **No Forecast** instead (see below).
+
 Each checkpoint keeps a list of reasons, for example `wind 47 mph → Severe` and `load 34,000 lb > 30,000 lb with wind 45–54 mph → No Travel`. The map popup shows these, so every level can be traced back to its rule.
 
 ### Examples
@@ -64,26 +66,50 @@ Weather comes from the Open-Meteo hourly forecast, requested in mph and inches.
 - **Rain:** `rain + showers`. Open-Meteo splits large-scale rain from convective showers; both are rain on the road.
 - **Snow:** `snowfall`.
 - **Which hour:** rain, showers and snowfall are totals for the hour *before* each timestamp, so a checkpoint reached at 14:20 uses the 15:00 value, which covers 14:00–15:00. Wind uses the nearest hour.
-- **Out of range:** if the ETA is past the end of the forecast, the checkpoint is marked "no forecast" and is not scored as Low.
+- **Out of range:** if the ETA is past the end of the forecast, the checkpoint is marked "No Forecast" and is not scored as Low. Departures are limited to 14 days ahead, which keeps normal trips inside Open-Meteo's 16-day forecast.
+- **Provider failure:** if the weather API fails, the request fails. The app never returns a plan with silently missing weather.
 
 ## Route summary
 
-Each checkpoint stands for the stretch of road up to the next checkpoint, using the real length of that stretch (the last one is usually shorter than the interval). Per route:
+### Which miles belong to which checkpoint
 
-- `no_travel_mi`, `severe_mi`, `high_mi`: miles at each level
-- `avg_risk`: distance-weighted average of the level values (0–4)
+Every mile of road takes the level of its **nearest checkpoint**, so each checkpoint covers half the gap to its neighbour on each side.
+
+Example: a 55-mile route sampled every 25 miles.
+
+| Checkpoint | At mile | Covers miles | Length |
+|---|---|---|---|
+| A (origin) | 0 | 0 – 12.5 | 12.5 |
+| B | 25 | 12.5 – 37.5 | 25 |
+| C | 50 | 37.5 – 52.5 | 15 |
+| D (destination) | 55 | 52.5 – 55 | 2.5 |
+
+The origin and destination get real mileage, no mile is counted twice, and the lengths add up to the route distance.
+
+### Per-route values
+
+- `no_travel_mi`, `severe_mi`, `high_mi`, `no_forecast_mi`: miles at each level
+- `has_no_travel`: true if **any** checkpoint is No Travel, regardless of how many miles it covers
+- `forecast_complete`: true if every checkpoint has a forecast
+- `avg_risk`: distance-weighted average of the level values (0–4) over the miles that have a forecast
 - `duration_min`: travel time from the routing API
 
 ## Route ranking
 
 Routes are sorted by these keys in order; a later key only matters when every earlier key is equal.
 
-1. Has any No Travel miles (routes without come first)
-2. Fewest Severe miles
-3. Fewest High miles
-4. Lowest average risk (rounded to 2 decimal places)
-5. Shortest travel time
+1. Has a No Travel checkpoint (routes without come first)
+2. Has a checkpoint with no forecast (fully covered routes come first)
+3. Fewest Severe miles
+4. Fewest High miles
+5. Lowest average risk
+6. Shortest travel time
 
-Keys 2–5 are the brief's preference order. Key 1 is added because the brief does not say where No Travel fits; a route the rules say not to drive should never be recommended over one that is drivable. If every route has a No Travel segment, the app recommends none and says so.
+Keys 3–6 are the brief's preference order. The first two are added because the brief doesn't cover them:
+
+- **No Travel:** a route the rules say not to drive should never be recommended over one that is drivable. If every route has a No Travel checkpoint, the app recommends none and says so.
+- **Missing forecast:** miles without a forecast are unknown, not safe. A route with a gap in its forecast never beats a fully covered route, so missing data can't make a route look better.
+
+Values are compared unrounded. Two numbers count as equal only when they differ by less than 10⁻⁹, which absorbs floating-point noise without merging genuinely different risks (0.821 still beats 0.824). Rounding is for display only.
 
 Risk comes before travel time, so a faster route only wins when the routes are equally safe.
