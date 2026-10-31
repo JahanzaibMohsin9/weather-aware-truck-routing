@@ -66,7 +66,7 @@ Weather comes from the Open-Meteo hourly forecast, requested in mph and inches.
 - **Rain:** `rain + showers`. Open-Meteo splits large-scale rain from convective showers; both are rain on the road.
 - **Snow:** `snowfall`.
 - **Which hour:** rain, showers and snowfall are totals for the hour *before* each timestamp, so a checkpoint reached at 14:20 uses the 15:00 value, which covers 14:00–15:00. Wind uses the nearest hour.
-- **Out of range:** if the ETA is past the end of the forecast, the checkpoint is marked "No Forecast" and is not scored as Low. Departures are limited to 14 days ahead, which keeps normal trips inside Open-Meteo's 16-day forecast.
+- **Out of range:** if the ETA is past the end of the forecast, the checkpoint is marked "No Forecast" and is not scored as Low. Departures must precede UTC midnight today + 16 days - 49 hours, reserving all slider frames and the next precipitation timestamp. Missing heatmap forecasts produce a visible warning at the affected hour.
 - **Provider failure:** if the weather API fails, the request fails. The app never returns a plan with silently missing weather.
 
 ## Route summary

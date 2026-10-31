@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from routing.services.errors import NoRouteFound
+from routing.services.errors import InvalidTrip, NoRouteFound, ProviderError, ProviderTimeout
 from routing.services.routes import find_routes, to_planned
 from routing.services.tomtom import RawRoute
 
@@ -40,8 +40,10 @@ class FakeClient:
         self.via = via or {}
         self.delays = delays or {}
         self.calls = []
+        self.alternatives = []
 
     def calculate_routes(self, locations, *, load_lbs, depart_at, route_type="fastest", max_alternatives=0):
+        self.alternatives.append(max_alternatives)
         if len(locations) == 3:
             kind = "south" if locations[1][0] < ORIGIN[0] else "north"
             self.calls.append("via")
@@ -80,6 +82,7 @@ def test_tops_up_with_route_types_then_via_and_drops_duplicates():
     routes, notes = run(client)
     assert [r.source for r in routes] == ["fastest", "shortest", "via"]
     assert sorted(client.calls) == ALL_EXTRA_CALLS
+    assert client.alternatives == [2] * 5
     assert notes == []
 
 
@@ -112,15 +115,37 @@ def test_via_without_route_uses_other_side():
     assert sorted(client.calls) == ALL_EXTRA_CALLS
 
 
-def test_reports_when_fewer_than_three_exist():
+def test_rejects_incomplete_comparison_after_searching_alternatives():
     client = FakeClient(
         main=[STRAIGHT],
         by_type={"shortest": [STRAIGHT_COPY], "eco": [STRAIGHT]},
         via={"south": [STRAIGHT_COPY], "north": [STRAIGHT]},
     )
-    routes, notes = run(client)
-    assert len(routes) == 1
-    assert "Only 1 distinct route" in notes[0]
+    with pytest.raises(InvalidTrip, match="could only find 1 distinct truck route"):
+        run(client)
+    assert sorted(client.calls) == ALL_EXTRA_CALLS
+
+
+def test_alternatives_from_top_up_can_complete_the_comparison():
+    routes, notes = run(FakeClient(main=[STRAIGHT], by_type={"shortest": [STRAIGHT_COPY, NORTH, SOUTH]}))
+    assert len(routes) == 3
+    assert notes == []
+
+
+def test_optional_provider_failure_does_not_discard_complete_result():
+    routes, _ = run(FakeClient(main=[STRAIGHT], by_type={"shortest": [NORTH, SOUTH], "eco": ProviderError("failed")}))
+    assert len(routes) == 3
+
+
+@pytest.mark.parametrize("error", [ProviderError("failed"), ProviderTimeout("slow")])
+def test_incomplete_search_reports_provider_failure_instead_of_no_alternatives(error):
+    with pytest.raises(type(error)):
+        run(FakeClient(main=[STRAIGHT], by_type={"shortest": error}))
+
+
+def test_empty_main_response_is_no_route():
+    with pytest.raises(NoRouteFound):
+        run(FakeClient(main=[]))
 
 
 def test_no_route_on_main_request_propagates():

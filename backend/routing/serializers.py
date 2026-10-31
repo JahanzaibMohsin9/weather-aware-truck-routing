@@ -3,9 +3,18 @@ from datetime import timedelta
 from django.utils import timezone
 from rest_framework import serializers
 
+from .domain.forecast import start_limit
+
 INTERVALS = (10, 25, 50)
-MAX_DAYS_AHEAD = 14  # trip + 48 h heatmap must fit Open-Meteo's 16-day forecast
 PAST_GRACE = timedelta(minutes=5)  # a form defaulting to "now" is a few seconds old on arrival
+
+
+def validate_forecast_window(value, now):
+    limit = start_limit(now)
+    if value >= limit:
+        raise serializers.ValidationError(
+            f"Choose a time before {limit:%Y-%m-%d %H:%M} UTC so the full 48-hour forecast is available."
+        )
 
 
 class PlanRequestSerializer(serializers.Serializer):
@@ -27,10 +36,7 @@ class PlanRequestSerializer(serializers.Serializer):
         now = timezone.now()
         if value < now - PAST_GRACE:
             raise serializers.ValidationError("Departure can't be in the past.")
-        if value > now + timedelta(days=MAX_DAYS_AHEAD):
-            raise serializers.ValidationError(
-                f"Departure must be within {MAX_DAYS_AHEAD} days; forecasts don't reach further."
-            )
+        validate_forecast_window(value, now)
         return value
 
     def validate(self, attrs):
@@ -60,6 +66,7 @@ class HeatmapRequestSerializer(serializers.Serializer):
 
     def validate_start(self, value):
         now = timezone.now()
-        if value < now - timedelta(hours=1) or value > now + timedelta(days=MAX_DAYS_AHEAD):
-            raise serializers.ValidationError(f"Start must be between now and {MAX_DAYS_AHEAD} days ahead.")
+        if value < now - timedelta(hours=1):
+            raise serializers.ValidationError("Start can't be more than an hour in the past.")
+        validate_forecast_window(value, now)
         return value

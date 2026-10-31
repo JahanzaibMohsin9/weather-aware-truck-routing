@@ -27,14 +27,21 @@ export default function PlanForm({ loading, fieldErrors, onSubmit }: Props) {
   const [departure, setDeparture] = useState(() => toDateTimeLocal(nextQuarterHour()))
   const [load, setLoad] = useState('36000')
   const [intervalMiles, setIntervalMiles] = useState(25)
+  const [departureError, setDepartureError] = useState<string | null>(null)
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
+    const departureDate = new Date(departure)
+    if (!departure || !Number.isFinite(departureDate.getTime())) {
+      setDepartureError('Enter a valid departure date and time.')
+      return
+    }
+    setDepartureError(null)
     onSubmit({
       origin: origin.trim(),
       destination: destination.trim(),
       // datetime-local is the viewer's local time; send it as an absolute instant.
-      departure: new Date(departure).toISOString(),
+      departure: departureDate.toISOString(),
       load_lbs: Number(load),
       interval_miles: intervalMiles,
     })
@@ -75,10 +82,13 @@ export default function PlanForm({ loading, fieldErrors, onSubmit }: Props) {
             label="Departure"
             type="datetime-local"
             value={departure}
-            onChange={(e) => setDeparture(e.target.value)}
+            onChange={(e) => {
+              setDeparture(e.target.value)
+              setDepartureError(null)
+            }}
             required
-            error={!!error('departure')}
-            helperText={error('departure') ?? 'Your local time'}
+            error={!!(departureError || error('departure'))}
+            helperText={departureError || error('departure') || 'Your local time'}
             size="small"
             sx={{ flex: 3 }}
             slotProps={{ inputLabel: { shrink: true } }}

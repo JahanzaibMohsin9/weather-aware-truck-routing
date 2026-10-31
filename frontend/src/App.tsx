@@ -35,6 +35,8 @@ export default function App() {
   // The slider follows the pointer immediately; the map renders the latest
   // hour at lower priority, skipping steps if it falls behind a fast drag.
   const mapHour = useDeferredValue(hour)
+  const coveredPoints = heat.data?.points.filter((p) => p.score[mapHour] != null).length ?? 0
+  const totalPoints = heat.data?.points.length ?? 0
 
   // Load the heatmap for a new plan's corridor in the background.
   useEffect(() => {
@@ -129,7 +131,16 @@ export default function App() {
         {/* Above the map's markers (route labels, truck) so they never cover the controls. */}
         <Box sx={{ position: 'absolute', left: 12, right: 48, bottom: 28, maxWidth: 720, mx: 'auto', zIndex: 4 }}>
           {heat.data ? (
-            <ForecastSlider hours={heat.data.hours} hour={hour} onChange={onHour} />
+            <Stack spacing={1}>
+              {(!totalPoints || coveredPoints < totalPoints) && (
+                <Alert severity="warning" sx={{ boxShadow: 2 }}>
+                  {coveredPoints === 0
+                    ? 'No weather forecast is available for this map hour. An empty heatmap does not mean safe conditions.'
+                    : `Forecast missing for ${totalPoints - coveredPoints} of ${totalPoints} corridor locations at this hour. Unshaded areas may have no data.`}
+                </Alert>
+              )}
+              <ForecastSlider hours={heat.data.hours} hour={hour} onChange={onHour} />
+            </Stack>
           ) : heat.loading ? (
             <Chip label="Loading the 48-hour forecast map…" sx={{ bgcolor: 'background.paper', boxShadow: 2 }} />
           ) : heat.error ? (

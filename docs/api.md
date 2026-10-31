@@ -10,7 +10,7 @@ Returns `{"status": "ok"}`. Used by the frontend and the host's health check.
 
 *Implemented.*
 
-Plans three routes and scores them. If the routing API returns fewer than three, the backend makes extra requests (other route types, then a sideways via-point) and drops near-duplicates. Fewer than three are returned only when no distinct alternative exists, and the response says so in `notes`.
+Plans three routes and scores them. If the routing API returns fewer than three, the backend makes extra requests (other route types and sideways via-points), requesting alternatives on each, and drops near-duplicates. A successful response always contains three distinct routes. If the searches cannot find three, the response is `422` with an explanation; a provider failure that prevents completing the comparison remains `502` or `504`.
 
 ### Request
 
@@ -27,7 +27,7 @@ Plans three routes and scores them. If the routing API returns fewer than three,
 | Field | Type | Rules |
 |---|---|---|
 | `origin`, `destination` | string | Required, up to 200 characters, must differ (case and spacing ignored). US places only. |
-| `departure` | datetime | Required. Not more than 5 minutes in the past, at most 14 days ahead. Without an offset it is read as UTC. |
+| `departure` | datetime | Required. Not more than 5 minutes in the past. Must be before UTC midnight today + 16 days - 49 hours, reserving the complete 48-hour slider and its precipitation timestamp. Without an offset it is read as UTC. |
 | `load_lbs` | number | Required, 1–150,000 |
 | `interval_miles` | integer | 10, 25 or 50; default 25 |
 
@@ -90,7 +90,7 @@ Trimmed example based on a real Dallas → Denver plan (one route, one checkpoin
 
 - Summary and checkpoint values are unrounded; the UI rounds them for display.
 - `recommended_route_id` is `null` when every route has a No Travel checkpoint.
-- `notes` lists anything the driver should know, such as fewer than three distinct routes or an incomplete forecast.
+- `notes` lists anything the driver should know, such as an incomplete checkpoint forecast.
 
 ### Errors
 
@@ -99,7 +99,7 @@ Errors other than `400` have the body `{ "detail": "message for the user" }`.
 | Status | When |
 |---|---|
 | `400` | Validation failed; body is `{ "field": ["message"] }` |
-| `422` | A place couldn't be found (or only a weak fuzzy match, e.g. "asdf" → "Asaf Drive"), no truck route exists, or origin and destination are the same place |
+| `422` | A place couldn't be found, fewer than three distinct truck routes were found after fallback searches, or origin and destination are the same place |
 | `502` | The routing or weather provider failed after one retry. No partial plan is returned. |
 
 ## `POST /api/heatmap`
@@ -123,7 +123,7 @@ Errors other than `400` have the body `{ "detail": "message for the user" }`.
 |---|---|---|
 | `routes` | array of `[lng, lat]` lists | 1–3 routes, each its checkpoints in order (up to 500); they define the corridor |
 | `load_lbs` | number | Load weight, so heatmap levels match the checkpoint levels |
-| `start` | datetime | Hour 0. Rounded down to the hour; at most 14 days ahead |
+| `start` | datetime | Hour 0. Rounded down to the hour; uses the same exclusive forecast cutoff as `departure`. May be at most one hour in the past. |
 
 ### Response `200`
 
@@ -152,7 +152,7 @@ Errors other than `400` have the body `{ "detail": "message for the user" }`.
 | `score` | Continuous 0–4 for drawing the heat; its whole part always equals `level` (see [risk model](risk-model.md#heat-score)) |
 | `wind`, `rain`, `snow` | mph, in/hr (rain + showers), in/hr |
 
-Each array has one value per hour. An hour without forecast data is `null` in every array and is drawn as no heat, never as Low. A typical long trip is about 170–200 points and about 220 KB of JSON, which gzip brings to about 30 KB.
+Each array has one value per hour. An hour without forecast data is `null` in every array and is drawn as no heat, never as Low. The UI warns when any corridor locations lack data at the displayed map hour, including when the entire frame is unavailable. A typical long trip is about 170–200 points and about 220 KB of JSON, which gzip brings to about 30 KB.
 
 ### Errors
 

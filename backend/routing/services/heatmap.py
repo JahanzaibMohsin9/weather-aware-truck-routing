@@ -10,11 +10,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Sequence
 
 from ..domain.corridor import corridor_grid
+from ..domain.forecast import SLIDER_HOURS
 from ..domain.geo import LatLng
 from ..domain.risk import assess, heat_score
 from .weather import OpenMeteoClient, weather_at
 
-HOURS = 49  # 0..48
+HOURS = SLIDER_HOURS + 1  # 0..48
 
 
 def build_heatmap(

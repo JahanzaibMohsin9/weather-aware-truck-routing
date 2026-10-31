@@ -75,6 +75,7 @@ def test_interval_defaults_to_25(planner):
         ({"load_lbs": -5}, "load_lbs"),
         ({"interval_miles": 30}, "interval_miles"),
         ({"departure": "2020-01-01T00:00:00Z"}, "departure"),
+        ({"departure": ""}, "departure"),
         ({"destination": "  dallas,   tx "}, "destination"),
         ({"origin": ""}, "origin"),
     ],
@@ -89,7 +90,7 @@ def test_validation_errors(planner, overrides, field):
 def test_departure_more_than_14_days_ahead(planner):
     response = post(body(departure=(timezone.now() + timedelta(days=15)).isoformat()))
     assert response.status_code == 400
-    assert "14 days" in response.json()["departure"][0]
+    assert "full 48-hour forecast" in response.json()["departure"][0]
 
 
 class TestHeatmapEndpoint:

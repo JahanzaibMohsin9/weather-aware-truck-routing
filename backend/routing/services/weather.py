@@ -16,12 +16,12 @@ import requests
 from django.core.cache import cache as default_cache
 
 from ..domain.geo import LatLng
+from ..domain.forecast import FORECAST_DAYS
 from .errors import ProviderError, ProviderTimeout
 from .http import get_with_retry
 
 URL = "https://api.open-meteo.com/v1/forecast"
 HOURLY = ("wind_speed_10m", "wind_gusts_10m", "rain", "showers", "snowfall")
-FORECAST_DAYS = 16
 CHUNK_SIZE = 100  # locations per request, keeps URLs short
 CACHE_SECONDS = 30 * 60
 COORD_DECIMALS = 2

@@ -24,7 +24,7 @@ from ..domain.geo import (
     point_at_mile,
     shared_fraction_of_samples,
 )
-from .errors import NoRouteFound
+from .errors import InvalidTrip, NoRouteFound, ProviderError
 from .tomtom import RawRoute, TomTomClient
 
 WANTED_ROUTES = 3
@@ -78,7 +78,7 @@ def find_routes(
     load_lbs: float,
     depart_at: datetime,
 ) -> tuple[list[PlannedRoute], list[str]]:
-    """Up to three distinct routes, plus notes for the driver."""
+    """Exactly three distinct routes, or an actionable error."""
     common = {"load_lbs": load_lbs, "depart_at": depart_at}
     routes: list[PlannedRoute] = []
 
@@ -95,6 +95,8 @@ def find_routes(
     )
     add(first[:1], "fastest")
     add(first[1:], "alternative")
+    if not routes:
+        raise NoRouteFound("No truck routes returned")
 
     if len(routes) < WANTED_ROUTES:
         main = routes[0]
@@ -109,21 +111,28 @@ def find_routes(
             for side in VIA_SIDES
         ]
 
-        def fetch(kwargs: dict) -> list[RawRoute]:
+        def fetch(kwargs: dict) -> tuple[list[RawRoute], ProviderError | None]:
             try:
-                return client.calculate_routes(**kwargs, **common)
+                return client.calculate_routes(max_alternatives=WANTED_ROUTES - 1, **kwargs, **common), None
             except NoRouteFound:  # e.g. a via point that landed in a lake
-                return []
+                return [], None
+            except ProviderError as exc:
+                # A failed optional search must not discard three good routes
+                # returned by the other searches.
+                return [], exc
 
         with ThreadPoolExecutor(max_workers=len(extra)) as pool:
             results = list(pool.map(fetch, [kwargs for _, kwargs in extra]))
-        for (source, _), raws in zip(extra, results):  # priority order, not completion order
+        for (source, _), (raws, _) in zip(extra, results):  # priority order, not completion order
             add(raws, source)
+        if len(routes) < WANTED_ROUTES:
+            for _, error in results:
+                if error is not None:
+                    raise error
 
-    notes = []
     if len(routes) < WANTED_ROUTES:
-        notes.append(
-            f"Only {len(routes)} distinct route(s) exist for this trip; "
-            "other options were more than 90% the same road as an existing route."
+        raise InvalidTrip(
+            f"We could only find {len(routes)} distinct truck route(s) for this trip after checking alternatives. "
+            "A comparison needs three routes. Try different endpoints or a different departure time."
         )
-    return routes, notes
+    return routes, []
