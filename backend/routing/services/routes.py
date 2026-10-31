@@ -24,8 +24,9 @@ from .errors import NoRouteFound
 from .tomtom import RawRoute, TomTomClient
 
 WANTED_ROUTES = 3
-# A candidate sharing more than this fraction of its length with a route we
-# already have is treated as the same route.
+# Two routes are the same route if more than this fraction of either one lies
+# on the other. Checking both ways also rejects a route that is an existing
+# route plus a detour (all of the existing route lies on it).
 DUPLICATE_SHARE = 0.9
 # Sideways via-point distance, as a fraction of the straight-line trip length.
 VIA_OFFSET_FRACTION = 0.1
@@ -56,7 +57,11 @@ def to_planned(raw: RawRoute, source: str) -> PlannedRoute:
 
 
 def is_duplicate(candidate: PlannedRoute, existing: list[PlannedRoute]) -> bool:
-    return any(shared_fraction(candidate.points, r.points) > DUPLICATE_SHARE for r in existing)
+    return any(
+        shared_fraction(candidate.points, r.points) > DUPLICATE_SHARE
+        or shared_fraction(r.points, candidate.points) > DUPLICATE_SHARE
+        for r in existing
+    )
 
 
 def find_routes(
@@ -111,6 +116,6 @@ def find_routes(
     if len(routes) < WANTED_ROUTES:
         notes.append(
             f"Only {len(routes)} distinct route(s) exist for this trip; "
-            "other options overlapped an existing route by more than 90%."
+            "other options were more than 90% the same road as an existing route."
         )
     return routes, notes

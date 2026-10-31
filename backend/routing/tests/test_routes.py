@@ -20,6 +20,9 @@ STRAIGHT_COPY = raw((32.001, -100.0), (32.001, -98.0))  # same road, ~0.07 mi of
 NORTH = raw(ORIGIN, (33.0, -99.0), DESTINATION)
 SOUTH = raw(ORIGIN, (31.0, -99.0), DESTINATION)
 NORTH_COPY = raw(ORIGIN, (33.0005, -99.0), DESTINATION)
+# STRAIGHT plus an out-and-back spur at the midpoint: less than half of it lies
+# on STRAIGHT, but all of STRAIGHT lies on it.
+STRAIGHT_WITH_DETOUR = raw(ORIGIN, (32.0, -99.0), (33.0, -99.0), (32.0, -99.0), DESTINATION)
 
 
 class FakeClient:
@@ -65,6 +68,14 @@ def test_tops_up_with_route_types_then_via_and_drops_duplicates():
     assert [r.source for r in routes] == ["fastest", "shortest", "via"]
     assert client.calls == ["fastest", "shortest", "eco", "via"]
     assert notes == []
+
+
+def test_existing_route_plus_detour_is_a_duplicate():
+    # Seen live on Dallas -> Denver: a via route that was the fastest route plus a detour.
+    client = FakeClient(main=[STRAIGHT, NORTH], via=[[STRAIGHT_WITH_DETOUR], [SOUTH]])
+    routes, _ = run(client)
+    assert [r.source for r in routes] == ["fastest", "alternative", "via"]
+    assert routes[2].points == SOUTH.points
 
 
 def test_via_without_route_tries_other_side():
