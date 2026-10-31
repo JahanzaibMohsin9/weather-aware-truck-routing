@@ -8,7 +8,10 @@ from dataclasses import dataclass, field
 from .levels import Level
 from .thresholds import LOAD_RULES, RAIN_IN_HR, SNOW_IN_HR, WIND_MPH, Scale
 
-__all__ = ["Level", "Assessment", "assess", "classify", "classify_wind", "classify_rain", "classify_snow"]
+__all__ = [
+    "Level", "Assessment", "assess", "heat_score",
+    "classify", "classify_wind", "classify_rain", "classify_snow",
+]
 
 
 def classify(value: float, scale: Scale) -> Level:
@@ -66,3 +69,32 @@ def assess(*, wind_mph: float, rain_in_hr: float, snow_in_hr: float, load_lbs: f
                 f"{rule.wind_from:g}-{rule.wind_below - 1:g} mph wind: {rule.level.label}"
             )
     return Assessment(level, reasons)
+
+
+def heat_score(*, wind_mph: float, rain_in_hr: float, snow_in_hr: float, level: Level) -> float:
+    """A continuous 0-4 version of `level` for the heatmap, so conditions that
+    are rising towards a threshold show before they cross it.
+
+    Each condition maps linearly between its thresholds (0 -> 0, Moderate
+    start -> 1, High start -> 2, Severe start -> 3, No Travel start -> 4); the
+    worst condition counts. The result always rounds down to `level`, so the
+    heatmap can't disagree with the checkpoint levels.
+    """
+    continuous = max(
+        _scale_position(wind_mph, WIND_MPH),
+        _scale_position(rain_in_hr, RAIN_IN_HR),
+        _scale_position(snow_in_hr, SNOW_IN_HR),
+    )
+    if level == Level.NO_TRAVEL:
+        return 4.0
+    return min(max(continuous, float(level)), level + 0.99)
+
+
+def _scale_position(value: float, scale: Scale) -> float:
+    knots = (0.0, scale.moderate_from, scale.high_from, scale.severe_from, scale.no_travel_from)
+    if value >= knots[-1]:
+        return 4.0
+    for i in range(1, len(knots)):
+        if value < knots[i]:
+            return i - 1 + (value - knots[i - 1]) / (knots[i] - knots[i - 1])
+    return 4.0

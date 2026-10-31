@@ -104,7 +104,7 @@ Errors other than `400` have the body `{ "detail": "message for the user" }`.
 
 ## `POST /api/heatmap`
 
-*Planned (Day 3).* Weather risk on a grid along the trip corridor for 49 hours. The client sends the checkpoints it got from `/api/plan`, so the server stores no plan state between requests.
+*Implemented.* Weather risk on a grid along the trip corridor for 49 hours. The client sends the checkpoints it got from `/api/plan`, so the server stores no plan state between requests.
 
 ### Request
 
@@ -121,19 +121,21 @@ Errors other than `400` have the body `{ "detail": "message for the user" }`.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `routes` | array of `[lng, lat]` lists | Each route's checkpoints in order; they define the corridor |
-| `load_lbs` | number | Load weight, so heatmap colours match the checkpoint levels |
-| `start` | datetime | Hour 0 (the departure hour), at most 14 days ahead |
+| `routes` | array of `[lng, lat]` lists | 1–3 routes, each its checkpoints in order (up to 500); they define the corridor |
+| `load_lbs` | number | Load weight, so heatmap levels match the checkpoint levels |
+| `start` | datetime | Hour 0. Rounded down to the hour; at most 14 days ahead |
 
 ### Response `200`
 
 ```json
 {
-  "hours": ["2026-11-02T12:00Z", "2026-11-02T13:00Z"],
+  "hours": ["2026-11-02T12:00:00Z", "2026-11-02T13:00:00Z"],
+  "spacing_mi": 23.9,
   "points": [
     {
       "lat": 33.1, "lng": -97.4,
-      "risk": [0, 0, 1, 2],
+      "level": [0, 0, 1, 2],
+      "score": [0.48, 0.58, 1.61, 2.1],
       "wind": [12.0, 14.5, 26.1, 36.0],
       "rain": [0.0, 0.0, 0.12, 0.3],
       "snow": [0.0, 0.0, 0.0, 0.0]
@@ -142,4 +144,16 @@ Errors other than `400` have the body `{ "detail": "message for the user" }`.
 }
 ```
 
-`hours` has 49 entries and each point's arrays have one value per hour. `risk` (0–4) uses the same thresholds and load rules as the checkpoints, so a checkpoint and the heatmap under it show the same level for the same hour. An hour without forecast data is `null` in every array and is drawn as no heat, never as Low.
+| Field | Meaning |
+|---|---|
+| `hours` | 49 hourly timestamps, hour 0 to hour 48 |
+| `spacing_mi` | Distance between grid points. The map uses it to size the heat radius. |
+| `level` | 0–4, the same thresholds and load rules as the checkpoints |
+| `score` | Continuous 0–4 for drawing the heat; its whole part always equals `level` (see [risk model](risk-model.md#heat-score)) |
+| `wind`, `rain`, `snow` | mph, in/hr (rain + showers), in/hr |
+
+Each array has one value per hour. An hour without forecast data is `null` in every array and is drawn as no heat, never as Low. A typical long trip is about 170–200 points and about 220 KB of JSON, which gzip brings to about 30 KB.
+
+### Errors
+
+`400` for invalid input, `502` if the weather service fails after one retry.

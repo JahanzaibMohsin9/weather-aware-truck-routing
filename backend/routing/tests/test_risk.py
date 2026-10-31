@@ -6,7 +6,7 @@ belongs to that band; Severe includes its top value for rain and snow.
 
 import pytest
 
-from routing.domain.risk import Level, assess, classify_rain, classify_snow, classify_wind
+from routing.domain.risk import Level, assess, classify_rain, classify_snow, classify_wind, heat_score
 
 L, M, H, S, N = Level.LOW, Level.MODERATE, Level.HIGH, Level.SEVERE, Level.NO_TRAVEL
 
@@ -109,3 +109,36 @@ class TestLoadRules:
     def test_no_load_reason_when_it_changes_nothing(self):
         result = assess(wind_mph=60, rain_in_hr=0, snow_in_hr=0, load_lbs=50000)
         assert result.reasons == ["Wind 60 mph: No Travel"]
+
+
+class TestHeatScore:
+    def score(self, wind=0.0, rain=0.0, snow=0.0, load=10000):
+        level = assess(wind_mph=wind, rain_in_hr=rain, snow_in_hr=snow, load_lbs=load).level
+        return heat_score(wind_mph=wind, rain_in_hr=rain, snow_in_hr=snow, level=level)
+
+    def test_calm_is_zero(self):
+        assert self.score() == 0
+
+    def test_linear_between_thresholds(self):
+        assert self.score(wind=12.5) == pytest.approx(0.5)  # halfway to 25
+        assert self.score(wind=30) == pytest.approx(1.5)  # halfway 25 -> 35
+        assert self.score(rain=0.375) == pytest.approx(2.5)  # halfway 0.25 -> 0.50
+
+    def test_threshold_maps_to_level(self):
+        assert self.score(wind=35) == pytest.approx(2)
+        assert self.score(snow=2.0) == pytest.approx(3)
+
+    def test_worst_condition_counts(self):
+        assert self.score(wind=12.5, snow=1.5) == pytest.approx(2.5)
+
+    @pytest.mark.parametrize(
+        "wind, rain, snow, load",
+        [(34.9, 0, 0, 1), (40, 0, 0, 40001), (47, 0, 0, 30001), (0, 1.0, 0, 1), (0, 0, 3.0, 1), (60, 0, 0, 1)],
+    )
+    def test_always_rounds_down_to_the_level(self, wind, rain, snow, load):
+        level = assess(wind_mph=wind, rain_in_hr=rain, snow_in_hr=snow, load_lbs=load).level
+        assert int(self.score(wind, rain, snow, load)) == level
+
+    def test_load_rule_raises_score(self):
+        # 40 mph is 2.5 on the wind scale, but > 40,000 lb makes it Severe.
+        assert self.score(wind=40, load=40001) == pytest.approx(3)

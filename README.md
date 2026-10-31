@@ -2,7 +2,7 @@
 
 A React + Django web app that helps a truck driver choose the safest route between two places, based on the forecast weather along each route, the truck's load weight and the travel time.
 
-> **Status:** in development. Sections marked *TBD* are filled in as each part is built.
+> **Status:** feature-complete locally; deployment and walkthrough next. Sections marked *TBD* are filled in then.
 
 | | |
 |---|---|
@@ -19,6 +19,15 @@ The driver enters an origin, a destination, a departure date/time and the load w
 4. Classifies each checkpoint as **Low, Moderate, High, Severe or No Travel** using the wind, rain and snow thresholds and the load-weight rules.
 5. **Recommends a route**: fewest Severe miles, then fewest High miles, then lowest average risk, then shortest travel time.
 6. Shows all routes, checkpoints, risk levels, ETAs and route summaries **on a map**, with a **weather heatmap along the trip corridor** and a **0–48 hour forecast slider**.
+
+### On the map
+
+- **Routes:** all three, with the selected one drawn wider and striped with the risk colour of each stretch of road. Click a route, its label or its card to select it.
+- **Route summaries on the map:** a label on each route with distance and time, plus risk miles for the selected route. The recommended route is starred.
+- **Checkpoints:** coloured by risk level. Click one for its ETA, wind, gusts, rain, snow, level and the rules that set the level.
+- **Heatmap:** weather risk across a 30-mile corridor around the routes, for any hour from departure to +48 h. All 49 hours load once, so the slider (and its play button) never waits on the network.
+- **Truck marker:** where the truck should be on the selected route at the slider's hour.
+- **Side panel:** the recommendation and why, then the routes ranked best first, each with a bar showing how many miles fall at each risk level.
 
 ## Tech stack
 
@@ -87,6 +96,7 @@ External APIs are mocked, so tests need no key or network. They cover:
 - **Ranking:** each tie-break in order, No Travel and missing-forecast routes ranking last, 0.821 beating 0.824 average risk even when much slower, and float noise falling through to travel time.
 - **Mileage:** nearest-checkpoint attribution, including a No Travel reading at the destination.
 - **Weather lookup:** which forecast hour is used for an ETA, rain + showers, beyond-forecast handling, batching and caching.
+- **Heatmap:** corridor grid stays within 30 mi of the routes, covers the whole route, respects the point cap and is stable across overlapping trips; heat score is linear between thresholds and always rounds down to the level.
 - **Routing:** checkpoint spacing, ETAs from TomTom's per-point times, overlap detection, topping up to three routes, retries, and rejecting weak geocode matches.
 - **API:** input validation and how provider errors map to HTTP status codes.
 
@@ -104,7 +114,8 @@ These are choices where the brief leaves room for interpretation. Details are in
 - **Ranking order:** risk comes before travel time, following the brief's preference list. Values are compared unrounded; rounding is for display only.
 - **No Travel routes:** the brief's ranking doesn't mention No Travel, so any route with a No Travel checkpoint ranks after every route without one and is flagged as not recommended.
 - **Forecast horizon:** departures can be up to 14 days ahead. Checkpoints whose ETA is still beyond the forecast are shown as "No Forecast", not as Low risk, and a route with such gaps ranks after fully covered routes.
-- **Heatmap time:** slider hour 0 is the departure hour.
+- **Heatmap time:** slider hour 0 is the departure hour (rounded down to the hour).
+- **Displayed times** are in the viewer's time zone. The API returns UTC.
 - **US only:** places are geocoded in the US. Including Canada made TomTom read state codes as street names ("Cheyenne, WY" became "Cheyenne Way, Ontario").
 - **Place matching:** if TomTom's best match is only a fuzzy guess, the app says it couldn't find the place rather than planning a trip somewhere else. The matched place name is shown with the plan.
 

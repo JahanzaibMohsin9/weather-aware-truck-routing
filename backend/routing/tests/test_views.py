@@ -87,6 +87,53 @@ def test_departure_more_than_14_days_ahead(planner):
     assert "14 days" in response.json()["departure"][0]
 
 
+class TestHeatmapEndpoint:
+    @pytest.fixture
+    def builder(self, monkeypatch):
+        calls = []
+
+        def fake_build(routes, *, load_lbs, start, weather):
+            calls.append((routes, load_lbs, start))
+            return {"hours": [], "spacing_mi": 8.0, "points": []}
+
+        monkeypatch.setattr(views, "OpenMeteoClient", lambda: object())
+        monkeypatch.setattr(views, "build_heatmap", fake_build)
+        return calls
+
+    def body(self, **overrides):
+        data = {
+            "routes": [[[-96.8, 32.78], [-97.0, 33.0]]],
+            "load_lbs": 36000,
+            "start": (timezone.now() + timedelta(hours=1)).isoformat(),
+        }
+        data.update(overrides)
+        return data
+
+    def post(self, data):
+        return Client().post("/api/heatmap", data, content_type="application/json")
+
+    def test_converts_lng_lat_to_lat_lng(self, builder):
+        assert self.post(self.body()).status_code == 200
+        routes, load, _ = builder[0]
+        assert routes == [[(32.78, -96.8), (33.0, -97.0)]]
+        assert load == 36000
+
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            {"routes": []},
+            {"routes": [[[-96.8]]]},
+            {"routes": [[[200, 32]]]},
+            {"routes": [[[-96.8, 32.78]]] * 4},
+            {"load_lbs": 0},
+            {"start": "2020-01-01T00:00:00Z"},
+        ],
+    )
+    def test_validation(self, builder, overrides):
+        assert self.post(self.body(**overrides)).status_code == 400
+        assert builder == []
+
+
 @pytest.mark.parametrize(
     "error, code",
     [

@@ -113,3 +113,17 @@ Keys 3–6 are the brief's preference order. The first two are added because the
 Values are compared unrounded. Two numbers count as equal only when they differ by less than 10⁻⁹, which absorbs floating-point noise without merging genuinely different risks (0.821 still beats 0.824). Rounding is for display only.
 
 Risk comes before travel time, so a faster route only wins when the routes are equally safe.
+
+## Heat score
+
+The heatmap needs a value that changes smoothly, so that weather building towards a threshold shows before it crosses it. Each condition is placed on a 0–4 scale, linear between its thresholds:
+
+| Condition | 0 | 1 | 2 | 3 | 4 |
+|---|---|---|---|---|---|
+| Wind (mph) | 0 | 25 | 35 | 45 | 55 |
+| Rain (in/hr) | 0 | 0.10 | 0.25 | 0.50 | 1.00 |
+| Snow (in/hr) | 0 | 0.5 | 1.0 | 2.0 | 3.0 |
+
+So 30 mph wind is 1.5, and 0.375 in/hr of rain is 2.5. The worst condition counts. The result is then raised to at least the point's level (which includes the load rules) and capped just below the next level, so **the whole part of the heat score always equals the level**. The heatmap can't show a point as Severe when its level is High, or the other way round. No Travel is always 4.
+
+The heat score is only used for drawing. Ranking and checkpoint levels use the levels above.

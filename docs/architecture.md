@@ -39,24 +39,46 @@ A long trip takes about 8–17 seconds to plan, measured locally. Most of it is 
 
 The forecast slider has to feel instant, so the heatmap is built to need no network calls while the slider moves.
 
-1. The browser posts each route's checkpoints, the load weight and the departure hour. Checkpoints 10–50 miles apart are precise enough to trace a 30-mile corridor, and sending them keeps the server stateless: no plan has to be stored between the two requests, which matters on hosting where each worker process has its own memory cache.
-2. The backend builds a grid of points over the checkpoints' bounding box and keeps only points within about 30 miles of a route (the trip corridor), up to roughly 300 points.
-3. It fetches all 49 forecast hours (0–48, hour 0 = departure hour) for those points in a few batched Open-Meteo calls and computes a risk level for every point and hour, using the same thresholds and load rules as the checkpoints.
-4. The browser gets the whole grid in one response.
-5. Moving the slider only changes which hour's values MapLibre's GPU heatmap layer reads. A truck marker on the selected route moves to where the truck is expected to be at that hour.
+1. As soon as a plan arrives, the browser posts each route's checkpoints, the load weight and the departure time. Checkpoints 10–50 miles apart are precise enough to trace a 30-mile corridor, and sending them keeps the server stateless: no plan has to be stored between the two requests, which matters on hosting where each worker process has its own memory cache.
+2. The backend lays a grid over the corridor and keeps the points within 30 miles of a route. The grid starts at 8-mile spacing and widens until there are at most 200 points, which caps weather API usage. It is aligned to fixed multiples of its spacing, so overlapping trips produce the same points and reuse cached forecasts.
+3. It fetches the forecast for those points in batched Open-Meteo calls and computes, for every point and each hour from 0 to 48 (hour 0 = departure hour), the risk level and a continuous heat score, using the same thresholds and load rules as the checkpoints.
+4. The browser gets everything in one gzip-compressed response, about 30 KB.
+5. The browser builds one GeoJSON frame per hour once. Moving the slider only swaps which frame the heatmap source shows, so nothing is fetched or recomputed. The slider updates immediately, and the map follows through React's `useDeferredValue`, so a fast drag skips frames instead of lagging. A truck marker moves along the selected route to where the checkpoint ETAs put it at that hour.
+
+### Drawing the heatmap
+
+MapLibre's heatmap layer adds up overlapping Gaussian blobs, so on its own the colour would show how dense the points are, not how risky the weather is. To make the colour mean risk:
+
+- Each point's weight is `score / 4`.
+- The blob radius is 1.5 × the grid spacing, converted to pixels for the current zoom (MapLibre draws the world 512 px wide at zoom 0), so neighbouring points always overlap evenly.
+- With that radius, a uniform grid of blobs adds up to about 0.62 × weight, so `heatmap-intensity` is set to 1.6 to bring the density back to about the weight.
+- The colour ramp then uses the risk colours: green below 0.25 (Low), yellow at 0.25 (Moderate), orange at 0.5 (High), red at 0.75 (Severe), purple at 1 (No Travel).
+
+The edges of the corridor fade naturally because they have fewer neighbours.
 
 ## Caching and limits
 
 - Forecasts are cached per location (coordinates rounded to 0.01°, about 0.7 mi) for 30 minutes, so re-planning the same trip or nearby checkpoints don't refetch.
-- Open-Meteo's free tier counts each location in a batch as one call (600/min, 10,000/day). Batches are chunked to 100 locations; a 900-mile trip at 25-mile spacing is about 110 locations.
+- Open-Meteo's free tier counts each location in a batch as one call (600/min, 10,000/day). Batches are chunked to 100 locations. A 900-mile trip at 25-mile spacing is about 110 locations for the plan, plus up to 200 for the heatmap, so roughly 30 new trips a day fit the free tier. Cached locations aren't fetched again.
 - TomTom's free tier allows 2,500 requests/day. A plan uses 3 calls (two geocodes and one routing call) when TomTom returns 3 distinct routes, and 7 when top-up is needed. Cached geocodes bring that down.
 - Calls to both providers are retried once after a short pause on rate limits, 5xx errors and network errors.
 
 ## Frontend structure
 
-| Folder | Contents |
+| Path | Contents |
 |---|---|
-| `src/api/` | Typed client for the two endpoints |
-| `src/components/` | `PlanForm`, `RouteCards`, `MapView`, `HeatmapLayer`, `ForecastSlider`, `Legend` |
-| `src/hooks/` | Data fetching and selected-route state |
-| `src/types.ts` | Shared response types |
+| `src/api/client.ts` | Typed client for the endpoints; turns error responses into messages and per-field errors |
+| `src/hooks/useRequest.ts` | One request at a time: a new request aborts the previous one, so a slow old response can't overwrite a newer one |
+| `src/components/PlanForm.tsx` | Trip form with inline validation errors |
+| `src/components/RouteCards.tsx` | Ranked route cards: badges, distance, time, arrival, risk miles, and a bar of miles per risk level |
+| `src/components/MapView.tsx` | The map: routes, risk-coloured stripe on the selected route, checkpoints, route summary labels, heatmap, truck marker |
+| `src/components/map/layers.ts` | Builds the GeoJSON and heatmap styling for the map |
+| `src/components/CheckpointPopup.tsx` | Checkpoint details: ETA, wind, gusts, rain, snow, level and the rules that set it |
+| `src/components/ForecastSlider.tsx` | 0–48 h slider with play/pause |
+| `src/components/Legend.tsx` | Risk colours and heat scale; collapsed by default on phones |
+| `src/utils/` | Formatting and route geometry helpers (position along a route by mile or by time) |
+| `src/maplibreSetup.ts` | Points MapLibre at its web worker; Vite's bundling otherwise breaks the worker URL |
+
+Times are shown in the viewer's own time zone.
+
+On screens narrower than 900 px the map takes the top half and the panel scrolls below it.
