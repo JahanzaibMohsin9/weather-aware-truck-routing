@@ -25,9 +25,9 @@ if not SECRET_KEY:
     SECRET_KEY = "dev-only-insecure-key"
 
 ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", "localhost,127.0.0.1")
-# Render sets this to the service's public hostname.
-if os.environ.get("RENDER_EXTERNAL_HOSTNAME"):
-    ALLOWED_HOSTS.append(os.environ["RENDER_EXTERNAL_HOSTNAME"])
+# Heroku sets DYNO on every dyno; the app is served from <app-name>.herokuapp.com.
+if "DYNO" in os.environ:
+    ALLOWED_HOSTS.append(".herokuapp.com")
 
 INSTALLED_APPS = [
     "django.contrib.staticfiles",
@@ -40,7 +40,9 @@ MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     # Heatmap responses are ~200 KB of repetitive numbers; gzip shrinks them ~7x.
+    # Listed before WhiteNoise so the frontend files it serves are compressed too.
     "django.middleware.gzip.GZipMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -63,12 +65,25 @@ CACHES = {
 TIME_ZONE = "UTC"
 USE_TZ = True
 STATIC_URL = "static/"
+# Heroku's Python buildpack runs collectstatic when it finds manage.py; this gives it a target.
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
-# Hostnames without a scheme are taken as https (Render passes bare hostnames).
-CORS_ALLOWED_ORIGINS = [
-    origin if "://" in origin else f"https://{origin}"
-    for origin in env_list("CORS_ALLOWED_ORIGINS", "http://localhost:5173")
-]
+# In production Django also serves the built React app (frontend/dist) at the
+# site root, so the page and the API share one origin and need no CORS.
+FRONTEND_DIST = BASE_DIR.parent / "frontend" / "dist"
+WHITENOISE_ROOT = FRONTEND_DIST if FRONTEND_DIST.is_dir() else None
+WHITENOISE_INDEX_FILE = True
+
+
+def _vite_hashed_asset(path: str, url: str) -> bool:
+    # Vite puts a content hash in every file name under /assets/, so they never change.
+    return url.startswith("/assets/")
+
+
+WHITENOISE_IMMUTABLE_FILE_TEST = _vite_hashed_asset
+
+# Only needed for local development, where Vite serves the page on another port.
+CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", "http://localhost:5173")
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [],
@@ -77,17 +92,17 @@ REST_FRAMEWORK = {
     "UNAUTHENTICATED_USER": None,
 }
 
-# Behind the host's HTTPS proxy.
+# Heroku's router terminates HTTPS and says so in X-Forwarded-Proto.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 if not DEBUG:
+    # herokuapp.com answers plain HTTP too, so redirect it here.
+    SECURE_SSL_REDIRECT = True
     SECURE_HSTS_SECONDS = 31_536_000
 
 SILENCED_SYSTEM_CHECKS = [
     # No cookies or sessions: the API is stateless JSON, so there is nothing for CSRF to protect.
     "security.W003",
-    # Render's edge redirects HTTP to HTTPS; redirecting here too would break its internal health check.
-    "security.W008",
-    # HSTS subdomain and preload policy belong to the parent domain (onrender.com), which isn't ours.
+    # HSTS subdomain and preload policy belong to the parent domain (herokuapp.com), which isn't ours.
     "security.W005",
     "security.W021",
 ]

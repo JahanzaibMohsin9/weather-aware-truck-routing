@@ -1,0 +1,20 @@
+{
+  "name": "Weather-Aware Truck Routing",
+  "description": "Compare three truck routes by forecast weather, load weight and travel time.",
+  "repository": "https://github.com/JahanzaibMohsin9/weather-aware-truck-routing",
+  "keywords": ["django", "react", "maplibre", "weather", "routing"],
+  "buildpacks": [{ "url": "heroku/nodejs" }, { "url": "heroku/python" }],
+  "env": {
+    "TOMTOM_API_KEY": {
+      "description": "TomTom API key for routing and geocoding (free at developer.tomtom.com).",
+      "required": true
+    },
+    "DJANGO_SECRET_KEY": {
+      "description": "Django secret key.",
+      "generator": "secret"
+    }
+  },
+  "formation": {
+    "web": { "quantity": 1, "size": "basic" }
+  }
+}

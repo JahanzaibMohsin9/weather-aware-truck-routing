@@ -1,0 +1,2 @@
+# Heroku's Python buildpack looks for requirements.txt at the repository root.
+-r backend/requirements.txt

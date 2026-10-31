@@ -68,7 +68,7 @@ export default function App() {
           </Typography>
           {server === 'waking' && (
             <Alert severity="info" sx={{ mb: 2 }}>
-              Waking up the server. It sleeps when idle on free hosting, so this can take up to a minute.
+              The server is taking a moment to respond. It may be starting up; this can take up to a minute.
             </Alert>
           )}
           {server === 'unreachable' && (

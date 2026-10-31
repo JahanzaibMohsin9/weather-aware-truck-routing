@@ -20,6 +20,12 @@
 
 `domain/` has no HTTP or Django imports. It takes plain data and returns plain data, so the rules can be unit-tested without the network and read in one place.
 
+In production one Heroku dyno runs everything: gunicorn serves the API, and WhiteNoise (inside Django) serves the built React app from `frontend/dist` at the site root. The page and the API share one origin, so no CORS is needed.
+
+### Time budget
+
+Heroku's router drops any request that takes longer than 30 seconds. Each API request gets a 25-second budget (`REQUEST_BUDGET_S` in `views.py`) that every outgoing call shares: a call gets at most the time left, and a retry happens only if enough time remains. When the budget runs out, the API answers 504 with a "please try again" message rather than letting the router cut the connection.
+
 ## Planning a trip (`POST /api/plan`)
 
 1. **Validate** the request: origin and destination differ, load > 0, interval is 10, 25 or 50, departure is not in the past and at most 14 days ahead.

@@ -1,3 +1,4 @@
+import time
 from datetime import timedelta
 
 import pytest
@@ -5,7 +6,7 @@ from django.test import Client
 from django.utils import timezone
 
 from routing import views
-from routing.services.errors import InvalidTrip, NoRouteFound, PlaceNotFound, ProviderError
+from routing.services.errors import InvalidTrip, NoRouteFound, PlaceNotFound, ProviderError, ProviderTimeout
 
 
 def test_health():
@@ -41,8 +42,12 @@ def planner(monkeypatch):
             raise planner.raises
         return {"ok": True}
 
-    monkeypatch.setattr(views, "TomTomClient", lambda key: object())
-    monkeypatch.setattr(views, "OpenMeteoClient", lambda: object())
+    def fake_tomtom(key, deadline):
+        planner.deadline = deadline
+        return object()
+
+    monkeypatch.setattr(views, "TomTomClient", fake_tomtom)
+    monkeypatch.setattr(views, "OpenMeteoClient", lambda deadline: object())
     monkeypatch.setattr(views, "plan_trip", fake_plan)
     planner.raises = None
     planner.calls = calls
@@ -96,7 +101,7 @@ class TestHeatmapEndpoint:
             calls.append((routes, load_lbs, start))
             return {"hours": [], "spacing_mi": 8.0, "points": []}
 
-        monkeypatch.setattr(views, "OpenMeteoClient", lambda: object())
+        monkeypatch.setattr(views, "OpenMeteoClient", lambda deadline: object())
         monkeypatch.setattr(views, "build_heatmap", fake_build)
         return calls
 
@@ -141,6 +146,7 @@ class TestHeatmapEndpoint:
         (NoRouteFound("x"), 422),
         (InvalidTrip("Origin and destination are the same place."), 422),
         (ProviderError("boom"), 502),
+        (ProviderTimeout("slow"), 504),
     ],
 )
 def test_provider_errors(planner, error, code):
@@ -148,3 +154,9 @@ def test_provider_errors(planner, error, code):
     response = post(body())
     assert response.status_code == code
     assert response.json()["detail"]
+
+
+def test_requests_get_a_time_budget_under_herokus_limit(planner):
+    started = time.monotonic()
+    post(body())
+    assert 0 < planner.deadline - started <= 30

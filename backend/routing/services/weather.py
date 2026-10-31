@@ -16,7 +16,7 @@ import requests
 from django.core.cache import cache as default_cache
 
 from ..domain.geo import LatLng
-from .errors import ProviderError
+from .errors import ProviderError, ProviderTimeout
 from .http import get_with_retry
 
 URL = "https://api.open-meteo.com/v1/forecast"
@@ -80,10 +80,18 @@ def _key(point: LatLng) -> str:
 
 
 class OpenMeteoClient:
-    def __init__(self, session: requests.Session | None = None, cache=None, timeout: float = 20):
+    def __init__(
+        self,
+        session: requests.Session | None = None,
+        cache=None,
+        timeout: float = 20,
+        deadline: float | None = None,
+    ):
+        """`deadline` (a `time.monotonic()` value) bounds every call this client makes."""
         self.session = session or requests.Session()
         self.cache = cache if cache is not None else default_cache
         self.timeout = timeout
+        self.deadline = deadline
 
     def series_for(self, points: Sequence[LatLng]) -> list[HourlySeries]:
         """A forecast for each point, in the same order. Fetches only uncached ones."""
@@ -109,7 +117,11 @@ class OpenMeteoClient:
             "forecast_days": FORECAST_DAYS,
         }
         try:
-            response = get_with_retry(self.session, URL, params=params, timeout=self.timeout)
+            response = get_with_retry(
+                self.session, URL, params=params, timeout=self.timeout, deadline=self.deadline
+            )
+        except requests.Timeout as exc:
+            raise ProviderTimeout("Open-Meteo was too slow") from exc
         except requests.RequestException as exc:
             raise ProviderError(f"Open-Meteo request failed: {exc.__class__.__name__}") from exc
         if response.status_code != 200:

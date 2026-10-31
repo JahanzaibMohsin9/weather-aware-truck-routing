@@ -4,9 +4,9 @@ import { api } from '../api/client'
 const SLOW_AFTER_MS = 2500
 
 /**
- * Pings the backend on page load. Free hosting puts the server to sleep when
- * idle and the first request can take up to a minute, so if the ping is slow
- * we say so instead of leaving the user wondering.
+ * Pings the backend on page load. If the server is starting up (after a
+ * deploy, or on a host that sleeps idle apps) the first request can be slow,
+ * so we say so instead of leaving the user wondering.
  */
 export function useServerWake(): 'ready' | 'waking' | 'unreachable' {
   const [state, setState] = useState<'ready' | 'waking' | 'unreachable' | 'checking'>('checking')

@@ -15,7 +15,7 @@ import requests
 from django.core.cache import cache as default_cache
 
 from ..domain.geo import LatLng
-from .errors import NoRouteFound, PlaceNotFound, ProviderError
+from .errors import NoRouteFound, PlaceNotFound, ProviderError, ProviderTimeout
 from .http import get_with_retry
 
 BASE_URL = "https://api.tomtom.com"
@@ -50,14 +50,21 @@ class RawRoute:
 
 class TomTomClient:
     def __init__(
-        self, api_key: str, session: requests.Session | None = None, cache=None, timeout: float = 20
+        self,
+        api_key: str,
+        session: requests.Session | None = None,
+        cache=None,
+        timeout: float = 20,
+        deadline: float | None = None,
     ):
+        """`deadline` (a `time.monotonic()` value) bounds every call this client makes."""
         if not api_key:
             raise ProviderError("TOMTOM_API_KEY is not set")
         self.api_key = api_key
         self.session = session or requests.Session()
         self.cache = cache if cache is not None else default_cache
         self.timeout = timeout
+        self.deadline = deadline
 
     def geocode(self, query: str) -> Place:
         normalized = " ".join(query.lower().split())
@@ -134,8 +141,14 @@ class TomTomClient:
     def _get(self, path: str, params: list, no_route_ok: bool = False) -> dict:
         try:
             response = get_with_retry(
-                self.session, BASE_URL + path, params=[("key", self.api_key), *params], timeout=self.timeout
+                self.session,
+                BASE_URL + path,
+                params=[("key", self.api_key), *params],
+                timeout=self.timeout,
+                deadline=self.deadline,
             )
+        except requests.Timeout as exc:
+            raise ProviderTimeout("TomTom was too slow") from exc
         except requests.RequestException as exc:
             raise ProviderError(f"TomTom request failed: {exc.__class__.__name__}") from exc
         if no_route_ok and response.status_code in (400, 404) and "NO_ROUTE_FOUND" in response.text:

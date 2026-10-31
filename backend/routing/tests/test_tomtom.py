@@ -5,7 +5,7 @@ import pytest
 import requests
 from django.core.cache.backends.locmem import LocMemCache
 
-from routing.services.errors import NoRouteFound, PlaceNotFound, ProviderError
+from routing.services.errors import NoRouteFound, PlaceNotFound, ProviderError, ProviderTimeout
 from routing.services.tomtom import TomTomClient
 
 
@@ -153,6 +153,11 @@ class TestFailures:
     def test_network_error(self):
         client, _ = client_with(error=requests.ConnectionError())
         with pytest.raises(ProviderError):
+            client.geocode("Dallas")
+
+    def test_timeout_is_reported_as_timeout(self):
+        client, _ = client_with(error=requests.Timeout())
+        with pytest.raises(ProviderTimeout):
             client.geocode("Dallas")
 
     def test_bad_json(self):

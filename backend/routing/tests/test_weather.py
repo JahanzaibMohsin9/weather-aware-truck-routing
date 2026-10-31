@@ -5,7 +5,7 @@ import pytest
 import requests
 from django.core.cache.backends.locmem import LocMemCache
 
-from routing.services.errors import ProviderError
+from routing.services.errors import ProviderError, ProviderTimeout
 from routing.services.weather import HourlySeries, OpenMeteoClient, weather_at
 
 START = datetime(2026, 11, 2, 0, 0, tzinfo=timezone.utc)
@@ -133,4 +133,8 @@ class TestClient:
 
     def test_network_error(self):
         with pytest.raises(ProviderError):
+            client(FakeSession(error=requests.ConnectionError())).series_for([(32.78, -96.8)])
+
+    def test_timeout_is_reported_as_timeout(self):
+        with pytest.raises(ProviderTimeout):
             client(FakeSession(error=requests.Timeout())).series_for([(32.78, -96.8)])

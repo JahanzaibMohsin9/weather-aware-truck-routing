@@ -1,6 +1,10 @@
 import type { HeatmapResponse, LngLat, PlanRequest, PlanResponse } from '../types'
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000').replace(/\/$/, '')
+// In production the backend serves this page, so the API is on the same origin.
+// In development Vite serves the page and the API runs on port 8000.
+const API_BASE_URL = (
+  import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.DEV ? 'http://localhost:8000' : '')
+).replace(/\/$/, '')
 
 /** A failed request. `fieldErrors` holds DRF's per-field validation messages (HTTP 400). */
 export class ApiError extends Error {
