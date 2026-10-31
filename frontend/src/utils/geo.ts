@@ -54,6 +54,29 @@ export class MeasuredLine {
 }
 
 /**
+ * Index of the heatmap point nearest `at` that has data for `hour`, or -1 if
+ * none is within `maxMiles` (so hovering outside the corridor shows nothing).
+ */
+export function nearestHeatPoint(
+  points: { lat: number; lng: number; score: (number | null)[] }[],
+  hour: number,
+  at: LngLat,
+  maxMiles: number,
+): number {
+  let best = -1
+  let bestMiles = maxMiles
+  points.forEach((p, i) => {
+    if (p.score[hour] == null) return
+    const miles = haversineMi(at, [p.lng, p.lat])
+    if (miles <= bestMiles) {
+      best = i
+      bestMiles = miles
+    }
+  })
+  return best
+}
+
+/**
  * Miles along the route the truck has covered at `time`, interpolated between
  * checkpoint ETAs. Before departure it is 0; after arrival, the full distance.
  */

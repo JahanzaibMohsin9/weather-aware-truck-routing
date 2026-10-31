@@ -32,6 +32,11 @@ GEOCODE_CACHE_SECONDS = 24 * 3600
 NO_ROUTE_CODES = ("NO_ROUTE_FOUND", "MAP_MATCHING_FAILURE")
 
 
+def _cache_key(kind: str, query: str) -> str:
+    normalized = " ".join(query.lower().split())
+    return f"{kind}:" + hashlib.sha1(normalized.encode()).hexdigest()
+
+
 @dataclass(frozen=True)
 class Place:
     label: str
@@ -71,13 +76,34 @@ class TomTomClient:
         self.deadline = deadline
 
     def geocode(self, query: str) -> Place:
-        normalized = " ".join(query.lower().split())
-        key = "geo:" + hashlib.sha1(normalized.encode()).hexdigest()
+        key = _cache_key("geo", query)
         place = self.cache.get(key)
         if place is None:
             place = self._geocode(query)
             self.cache.set(key, place, GEOCODE_CACHE_SECONDS)
         return place
+
+    def suggest(self, query: str, limit: int = 5) -> list[Place]:
+        """Places matching partly typed text, for autocomplete.
+
+        Each suggestion is also cached as the geocode for its own label, so
+        planning with a picked suggestion uses exactly that place.
+        """
+        key = _cache_key("sug", query)
+        places = self.cache.get(key)
+        if places is None:
+            data = self._get(
+                f"/search/2/geocode/{quote(query, safe='')}.json",
+                [("typeahead", "true"), ("limit", limit), ("countrySet", COUNTRY_SET)],
+            )
+            places = []
+            for result in data.get("results") or []:
+                label = result.get("address", {}).get("freeformAddress")
+                if label and all(p.label != label for p in places):
+                    places.append(Place(label, result["position"]["lat"], result["position"]["lon"]))
+            self.cache.set(key, places, GEOCODE_CACHE_SECONDS)
+            self.cache.set_many({_cache_key("geo", p.label): p for p in places}, GEOCODE_CACHE_SECONDS)
+        return places
 
     def _geocode(self, query: str) -> Place:
         data = self._get(

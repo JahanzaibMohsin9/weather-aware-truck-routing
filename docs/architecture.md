@@ -39,7 +39,9 @@ Heroku's router drops any request that takes longer than 30 seconds. Each API re
 
 ### Where the time goes
 
-A long trip takes about 8–17 seconds to plan, measured locally. Most of it is TomTom calculating truck routes with alternatives (about 2–6 s per call), plus one more round of routing calls when top-up is needed, and about 2–3 s for the weather batch. Geocoding and top-up requests run in parallel, and weather and geocoding are cached, so repeat plans are faster. The UI shows a loading state during this time.
+A long trip takes about 8–17 seconds to plan, measured locally. Most of it is TomTom calculating truck routes with alternatives (about 2–6 s per call), plus one more round of routing calls when top-up is needed, and about 2–3 s for the weather batch. Geocoding and top-up requests run in parallel, and weather and geocoding are cached, so repeat plans are faster.
+
+The page uses `POST /api/plan/stream` rather than `/api/plan`. The planner reports each stage through a callback (places → routes → alternatives → forecast → scoring), the view runs it in a worker thread, and each stage is sent to the browser as a line of JSON as it happens. So instead of a 10–15 second spinner, the user sees which step is running and the server's own message, such as "Checking the forecast at 104 checkpoints". The stream is sent uncompressed, because Django's gzip middleware buffers streamed output until the end.
 
 ## Heatmap (`POST /api/heatmap`)
 

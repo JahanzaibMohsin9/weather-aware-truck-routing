@@ -1,3 +1,4 @@
+import json
 import time
 from datetime import timedelta
 
@@ -36,8 +37,11 @@ def planner(monkeypatch):
     """Replace the providers and planner so no request leaves the test."""
     calls = []
 
-    def fake_plan(req, *, tomtom, weather):
+    def fake_plan(req, *, tomtom, weather, progress=None):
         calls.append(req)
+        if progress:
+            progress("places", "Looking up places")
+            progress("routes", "Finding truck routes")
         if isinstance(planner.raises, Exception):
             raise planner.raises
         return {"ok": True}
@@ -155,6 +159,78 @@ def test_provider_errors(planner, error, code):
     response = post(body())
     assert response.status_code == code
     assert response.json()["detail"]
+
+
+class TestPlaces:
+    @pytest.fixture
+    def suggest(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from routing.services.tomtom import Place
+
+        state = SimpleNamespace(raises=None, queries=[])
+
+        class FakeClient:
+            def __init__(self, key, deadline):
+                pass
+
+            def suggest(self, query):
+                if state.raises:
+                    raise state.raises
+                state.queries.append(query)
+                return [Place("Dallas, TX", 32.78, -96.8)]
+
+        monkeypatch.setattr(views, "TomTomClient", FakeClient)
+        return state
+
+    def test_returns_places(self, suggest):
+        response = Client().get("/api/places", {"q": " Dall "})
+        assert response.status_code == 200
+        assert response.json() == {"places": [{"label": "Dallas, TX", "lat": 32.78, "lng": -96.8}]}
+        assert suggest.queries == ["Dall"]
+
+    def test_too_short(self, suggest):
+        assert Client().get("/api/places", {"q": "D"}).status_code == 400
+        assert suggest.queries == []
+
+    def test_provider_failure(self, suggest):
+        suggest.raises = ProviderError("down")
+        response = Client().get("/api/places", {"q": "Dall"})
+        assert response.status_code == 502
+        assert response.json()["detail"]
+
+
+class TestPlanStream:
+    def stream(self, data):
+        response = Client().post("/api/plan/stream", data, content_type="application/json")
+        return response, [json.loads(line) for line in b"".join(response.streaming_content).splitlines()]
+
+    def test_progress_then_result(self, planner):
+        response, events = self.stream(body())
+        assert response.status_code == 200
+        assert response["Content-Type"] == "application/x-ndjson"
+        # Not gzipped: GZipMiddleware would hold every line back until the end.
+        assert response["Content-Encoding"] == "identity"
+        assert [e["type"] for e in events] == ["progress", "progress", "result"]
+        assert events[0] == {"type": "progress", "step": "places", "message": "Looking up places"}
+        assert events[-1]["plan"] == {"ok": True}
+
+    @pytest.mark.parametrize(
+        "error, code",
+        [(PlaceNotFound("Atlantis"), 422), (ProviderTimeout("slow"), 504), (ProviderError("boom"), 502)],
+    )
+    def test_errors_arrive_as_an_event(self, planner, error, code):
+        planner.raises = error
+        _, events = self.stream(body())
+        assert events[-1]["type"] == "error"
+        assert events[-1]["status"] == code
+        assert events[-1]["detail"]
+
+    def test_invalid_input_is_a_plain_400(self, planner):
+        response = Client().post("/api/plan/stream", body(load_lbs=0), content_type="application/json")
+        assert response.status_code == 400
+        assert "load_lbs" in response.json()
+        assert planner.calls == []
 
 
 def test_requests_get_a_time_budget_under_herokus_limit(planner):

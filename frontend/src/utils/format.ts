@@ -22,6 +22,13 @@ export function formatLocalTime(iso: string | Date): string {
   return timeFormat.format(typeof iso === 'string' ? new Date(iso) : iso)
 }
 
+const clockFormat = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })
+
+/** Just the local clock time, e.g. "6:45 PM". */
+export function formatClock(iso: string | Date): string {
+  return clockFormat.format(typeof iso === 'string' ? new Date(iso) : iso)
+}
+
 /** Value for <input type="datetime-local"> in the viewer's time zone. */
 export function toDateTimeLocal(date: Date): string {
   const offset = date.getTimezoneOffset() * 60_000

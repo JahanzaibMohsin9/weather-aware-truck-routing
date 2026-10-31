@@ -6,6 +6,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from typing import Callable
 
 from ..domain.geo import Checkpoint, build_checkpoints, coverage_miles, haversine_mi, simplify
 from ..domain.levels import NO_FORECAST
@@ -17,6 +18,14 @@ from .tomtom import TomTomClient
 from .weather import OpenMeteoClient, Weather, weather_at
 
 ROUTE_IDS = "ABC"
+
+# Called as progress(step, message) at each stage, so the UI can show what
+# the ~10 s wait is spent on. Steps: places, routes, alternatives, forecast, scoring.
+Progress = Callable[[str, str], None]
+
+
+def _no_progress(step: str, message: str) -> None:
+    pass
 # ~50 m: invisible at map zoom levels, cuts a route from ~10,000 points to ~1,000.
 GEOMETRY_TOLERANCE_DEG = 0.0005
 SAME_PLACE_MI = 1.0
@@ -37,8 +46,10 @@ def plan_trip(
     tomtom: TomTomClient,
     weather: OpenMeteoClient,
     now: datetime | None = None,
+    progress: Progress = _no_progress,
 ) -> dict:
     now = now or datetime.now(timezone.utc)
+    progress("places", f"Looking up {req.origin} and {req.destination}")
     with ThreadPoolExecutor(max_workers=2) as pool:
         origin, destination = pool.map(tomtom.geocode, [req.origin, req.destination])
     if haversine_mi(origin.point, destination.point) < SAME_PLACE_MI:
@@ -46,16 +57,20 @@ def plan_trip(
 
     # TomTom rejects departure times in the past; ETAs still use the user's time.
     depart_at = max(req.departure, now + timedelta(minutes=1))
+    progress("routes", f"Finding truck routes from {origin.label} to {destination.label}")
     routes, notes = find_routes(
-        tomtom, origin.point, destination.point, load_lbs=req.load_lbs, depart_at=depart_at
+        tomtom, origin.point, destination.point, load_lbs=req.load_lbs, depart_at=depart_at, progress=progress
     )
 
     checkpoints = [
         build_checkpoints(r.points, req.interval_miles, r.profile, req.departure) for r in routes
     ]
+    count = sum(len(cps) for cps in checkpoints)
+    progress("forecast", f"Checking the forecast at {count} checkpoints, at the hour the truck reaches each one")
     # One batched weather lookup for every checkpoint on every route.
     series = iter(weather.series_for([(cp.lat, cp.lng) for cps in checkpoints for cp in cps]))
     conditions = [[weather_at(next(series), cp.eta) for cp in cps] for cps in checkpoints]
+    progress("scoring", "Scoring risk and ranking the routes")
 
     assessments = [
         [

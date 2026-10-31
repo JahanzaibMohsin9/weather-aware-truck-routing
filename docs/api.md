@@ -6,9 +6,17 @@ Base path: `/api`. Requests and responses are JSON. Times are ISO 8601; response
 
 Returns `{"status": "ok"}`. Used by the frontend and the host's health check.
 
-## `POST /api/plan`
+## `GET /api/places?q=…`
 
-*Implemented.*
+Place suggestions for autocomplete: up to five US places matching partly typed text (`q`, 2–100 characters).
+
+```json
+{ "places": [ { "label": "Spring Hill, FL", "lat": 28.48, "lng": -82.53 } ] }
+```
+
+Results are cached for a day. Each suggestion is also cached as the geocode for its own label, so planning with a picked suggestion uses exactly that place. `400` if `q` is too short or long, `502` if TomTom fails; the form treats suggestions as optional and keeps working.
+
+## `POST /api/plan`
 
 Plans three routes and scores them. If the routing API returns fewer than three, the backend makes extra requests (other route types and sideways via-points), requesting alternatives on each, and drops near-duplicates. If fewer than three distinct routes exist (some trips have only one sensible road), the response contains the routes found and a note in `notes` saying so. If one of those extra searches failed, the note says other routes may exist.
 
@@ -101,6 +109,25 @@ Errors other than `400` have the body `{ "detail": "message for the user" }`.
 | `400` | Validation failed; body is `{ "field": ["message"] }` |
 | `422` | A place couldn't be found, no truck route exists at all, or origin and destination are the same place |
 | `502` | The routing or weather provider failed after one retry. No partial plan is returned. |
+| `504` | The providers were too slow for the 25-second request budget |
+
+## `POST /api/plan/stream`
+
+The same request and the same plan as `POST /api/plan`, but the response is streamed as newline-delimited JSON (`application/x-ndjson`), one object per line, so the UI can show what the wait is spent on:
+
+```
+{"type": "progress", "step": "places", "message": "Looking up Dallas, TX and Denver, CO"}
+{"type": "progress", "step": "routes", "message": "Finding truck routes from Dallas, TX to Denver, CO"}
+{"type": "progress", "step": "alternatives", "message": "TomTom returned 2 distinct routes; searching for alternatives"}
+{"type": "progress", "step": "forecast", "message": "Checking the forecast at 104 checkpoints, at the hour the truck reaches each one"}
+{"type": "progress", "step": "scoring", "message": "Scoring risk and ranking the routes"}
+{"type": "result", "plan": { … same body as POST /api/plan … }}
+```
+
+- `alternatives` only appears when TomTom returns fewer than three distinct routes.
+- A planning failure ends the stream with `{"type": "error", "status": 422, "detail": "…"}`, using the same statuses and messages as `POST /api/plan`.
+- Invalid input is rejected with an ordinary `400` JSON response before anything is streamed.
+- The stream is sent uncompressed: Django's gzip middleware would hold every line back until the end.
 
 ## `POST /api/heatmap`
 

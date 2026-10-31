@@ -1,14 +1,15 @@
 import { useCallback, useDeferredValue, useEffect, useState } from 'react'
-import { Alert, Box, Chip, Divider, LinearProgress, Paper, Stack, Typography } from '@mui/material'
-import { api } from './api/client'
+import { Alert, Box, Chip, Divider, Paper, Stack, Typography } from '@mui/material'
+import { api, type PlanProgress as PlanProgressEvent } from './api/client'
 import ForecastSlider from './components/ForecastSlider'
 import Legend from './components/Legend'
 import MapView from './components/MapView'
 import PlanForm from './components/PlanForm'
+import PlanProgress from './components/PlanProgress'
 import RouteCards from './components/RouteCards'
 import { useRequest } from './hooks/useRequest'
 import { useServerWake } from './hooks/useServerWake'
-import type { PlanResponse } from './types'
+import type { PlanRequest, PlanResponse } from './types'
 
 /** The route to show first: the recommended one, else the best-ranked. */
 function defaultRouteId(plan: PlanResponse | null): string | null {
@@ -18,7 +19,16 @@ function defaultRouteId(plan: PlanResponse | null): string | null {
 
 export default function App() {
   const server = useServerWake()
-  const plan = useRequest(api.plan)
+  // Planning streams its progress; keep the steps for the progress list.
+  const [progress, setProgress] = useState<{ startedAt: number; events: PlanProgressEvent[] }>({
+    startedAt: 0,
+    events: [],
+  })
+  const planWithProgress = useCallback((body: PlanRequest, signal: AbortSignal) => {
+    setProgress({ startedAt: Date.now(), events: [] })
+    return api.planStream(body, (event) => setProgress((p) => ({ ...p, events: [...p.events, event] })), signal)
+  }, [])
+  const plan = useRequest(planWithProgress)
   const heat = useRequest(api.heatmap, { keepData: false })
   const { run: runHeat } = heat
 
@@ -80,14 +90,7 @@ export default function App() {
           )}
           <PlanForm loading={plan.loading} fieldErrors={plan.error?.fieldErrors ?? {}} onSubmit={plan.run} />
         </Box>
-        {plan.loading && (
-          <Box sx={{ px: 2, pb: 2 }}>
-            <LinearProgress />
-            <Typography variant="caption" color="text.secondary">
-              Finding truck routes and checking the forecast at each checkpoint. Long trips take 10–15 seconds.
-            </Typography>
-          </Box>
-        )}
+        {plan.loading && <PlanProgress events={progress.events} startedAt={progress.startedAt} />}
         {plan.error && !Object.keys(plan.error.fieldErrors).length && (
           <Alert severity="error" sx={{ mx: 2, mb: 2 }}>
             {plan.error.message}
@@ -139,7 +142,12 @@ export default function App() {
                     : `Forecast missing for ${totalPoints - coveredPoints} of ${totalPoints} corridor locations at this hour. Unshaded areas may have no data.`}
                 </Alert>
               )}
-              <ForecastSlider hours={heat.data.hours} hour={hour} onChange={onHour} />
+              <ForecastSlider
+                hours={heat.data.hours}
+                hour={hour}
+                onChange={onHour}
+                route={plan.data?.routes.find((r) => r.id === selectedId)}
+              />
             </Stack>
           ) : heat.loading ? (
             <Chip label="Loading the 48-hour forecast map…" sx={{ bgcolor: 'background.paper', boxShadow: 2 }} />

@@ -12,6 +12,7 @@ import {
 } from '@mui/material'
 import type { PlanRequest } from '../types'
 import { nextQuarterHour, toDateTimeLocal } from '../utils/format'
+import PlaceField from './PlaceField'
 
 const INTERVALS = [10, 25, 50]
 
@@ -57,26 +58,8 @@ export default function PlanForm({ loading, fieldErrors, onSubmit }: Props) {
   return (
     <Box component="form" onSubmit={submit} noValidate>
       <Stack spacing={2}>
-        <TextField
-          label="Origin"
-          placeholder="City, ST or address"
-          value={origin}
-          onChange={(e) => setOrigin(e.target.value)}
-          required
-          error={!!error('origin')}
-          helperText={error('origin')}
-          size="small"
-        />
-        <TextField
-          label="Destination"
-          placeholder="City, ST or address"
-          value={destination}
-          onChange={(e) => setDestination(e.target.value)}
-          required
-          error={!!error('destination')}
-          helperText={error('destination')}
-          size="small"
-        />
+        <PlaceField label="Origin" value={origin} onChange={setOrigin} error={error('origin')} />
+        <PlaceField label="Destination" value={destination} onChange={setDestination} error={error('destination')} />
         <Stack direction="row" spacing={1.5}>
           <TextField
             label="Departure"

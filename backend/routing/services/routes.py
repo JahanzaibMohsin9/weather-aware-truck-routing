@@ -12,6 +12,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Callable
 
 from ..domain.geo import (
     LatLng,
@@ -77,6 +78,7 @@ def find_routes(
     *,
     load_lbs: float,
     depart_at: datetime,
+    progress: Callable[[str, str], None] | None = None,
 ) -> tuple[list[PlannedRoute], list[str]]:
     """Up to three distinct routes, plus notes for the driver.
 
@@ -105,6 +107,9 @@ def find_routes(
 
     failed_searches = 0
     if len(routes) < WANTED_ROUTES:
+        if progress:
+            found = f"{len(routes)} distinct route{'s' if len(routes) != 1 else ''}"
+            progress("alternatives", f"TomTom returned {found}; searching for alternatives")
         main = routes[0]
         midpoint = point_at_mile(main.points, cumulative_miles(main.points), main.distance_mi / 2)
         heading = bearing_deg(origin, destination)

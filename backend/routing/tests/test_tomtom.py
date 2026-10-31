@@ -100,6 +100,36 @@ class TestGeocode:
         assert len(session.calls) == 1
 
 
+class TestSuggest:
+    PAYLOAD = {
+        "results": [
+            {"address": {"freeformAddress": "Dallas, TX"}, "position": {"lat": 32.78, "lon": -96.8}},
+            {"address": {"freeformAddress": "Dallas, TX"}, "position": {"lat": 32.9, "lon": -96.7}},
+            {"address": {"freeformAddress": "Dallas, GA"}, "position": {"lat": 33.92, "lon": -84.84}},
+        ]
+    }
+
+    def test_request_and_duplicate_labels(self):
+        client, session = client_with(FakeResponse(payload=self.PAYLOAD))
+        places = client.suggest("Dall")
+        assert [p.label for p in places] == ["Dallas, TX", "Dallas, GA"]
+        _, params = session.calls[0]
+        assert ("typeahead", "true") in params and ("limit", 5) in params and ("countrySet", "US") in params
+
+    def test_cached(self):
+        client, session = client_with(FakeResponse(payload=self.PAYLOAD))
+        client.suggest("Dall")
+        client.suggest("  dall ")
+        assert len(session.calls) == 1
+
+    def test_picked_suggestion_geocodes_to_the_same_place_without_a_request(self):
+        client, session = client_with(FakeResponse(payload=self.PAYLOAD))
+        client.suggest("Dall")
+        place = client.geocode("Dallas, GA")
+        assert (place.lat, place.lng) == (33.92, -84.84)
+        assert len(session.calls) == 1
+
+
 class TestCalculateRoutes:
     def test_request_parameters(self):
         client, session = client_with(FakeResponse(payload=ROUTE_PAYLOAD))

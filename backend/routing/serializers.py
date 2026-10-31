@@ -17,6 +17,10 @@ def validate_forecast_window(value, now):
         )
 
 
+class PlaceSearchSerializer(serializers.Serializer):
+    q = serializers.CharField(min_length=2, max_length=100, trim_whitespace=True)
+
+
 class PlanRequestSerializer(serializers.Serializer):
     origin = serializers.CharField(max_length=200)
     destination = serializers.CharField(max_length=200)

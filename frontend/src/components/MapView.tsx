@@ -13,9 +13,9 @@ import { Box, Paper, Typography } from '@mui/material'
 import LocalShippingIcon from '@mui/icons-material/LocalShipping'
 import maplibregl from '../maplibreSetup'
 import type { HeatmapResponse, PlanResponse, Route } from '../types'
-import { ROUTE_COLORS } from '../theme/colors'
-import { formatDuration, formatMiles } from '../utils/format'
-import { MeasuredLine, mileAtTime } from '../utils/geo'
+import { LEVELS, ROUTE_COLORS, levelColor } from '../theme/colors'
+import { formatDuration, formatLocalTime, formatMiles } from '../utils/format'
+import { MeasuredLine, mileAtTime, nearestHeatPoint } from '../utils/geo'
 import CheckpointPopup from './CheckpointPopup'
 import {
   CHECKPOINT_LAYER,
@@ -110,6 +110,28 @@ export default function MapView({ plan, selectedId, onSelect, heatmap, hour }: P
   const popupRoute = popup ? routes.find((r) => r.id === popup.routeId) : undefined
   const popupCheckpoint = popup ? popupRoute?.checkpoints[popup.index] : undefined
 
+  // Hover details. State changes only when the hovered thing changes, so
+  // moving the mouse doesn't re-render the map on every pixel.
+  const [hoverState, setHoverState] = useState<{ routes: Route[]; hover: Hover } | null>(null)
+  const hover = hoverState?.routes === routes ? hoverState.hover : null
+  const onMouseMove = (event: MapMouseEvent) => {
+    const feature = event.features?.find((f) => f.layer.id === CHECKPOINT_LAYER)
+    let next: Hover | null = null
+    if (feature) {
+      const { route, index } = feature.properties as { route: string; index: number }
+      next = { kind: 'checkpoint', routeId: route, index }
+    } else if (heatmap) {
+      const index = nearestHeatPoint(heatmap.points, hour, [event.lngLat.lng, event.lngLat.lat], heatmap.spacing_mi * 0.75)
+      if (index >= 0) next = { kind: 'heat', index }
+    }
+    if (hoverKey(next) !== hoverKey(hover)) setHoverState(next && { routes, hover: next })
+  }
+  const hoverCheckpoint =
+    hover?.kind === 'checkpoint' && !(popup && popup.routeId === hover.routeId && popup.index === hover.index)
+      ? { routeId: hover.routeId, cp: routes.find((r) => r.id === hover.routeId)?.checkpoints[hover.index] }
+      : null
+  const hoverHeat = hover?.kind === 'heat' && heatmap ? heatmap.points[hover.index] : null
+
   return (
     <Map
       ref={mapRef}
@@ -121,6 +143,8 @@ export default function MapView({ plan, selectedId, onSelect, heatmap, hour }: P
       onClick={onClick}
       onMouseEnter={() => setCursor('pointer')}
       onMouseLeave={() => setCursor('')}
+      onMouseMove={routes.length ? onMouseMove : undefined}
+      onMouseOut={() => setHoverState(null)}
       cursor={cursor}
       attributionControl={false}
     >
@@ -238,7 +262,70 @@ export default function MapView({ plan, selectedId, onSelect, heatmap, hour }: P
           <CheckpointPopup routeId={popupRoute.id} checkpoint={popupCheckpoint} />
         </Popup>
       )}
+
+      {hoverCheckpoint?.cp && (
+        <HoverTip lng={hoverCheckpoint.cp.lng} lat={hoverCheckpoint.cp.lat}>
+          <Typography variant="caption" component="div" sx={{ fontWeight: 600 }}>
+            <LevelDot color={levelColor(hoverCheckpoint.cp.level)} />
+            {hoverCheckpoint.cp.level} · Route {hoverCheckpoint.routeId}, mile {formatMiles(hoverCheckpoint.cp.mile)}
+          </Typography>
+          <Typography variant="caption" component="div" color="text.secondary">
+            ETA {formatLocalTime(hoverCheckpoint.cp.eta)}
+            {hoverCheckpoint.cp.wind_mph != null &&
+              ` · wind ${hoverCheckpoint.cp.wind_mph.toFixed(0)} mph · rain ${hoverCheckpoint.cp.rain_in_hr?.toFixed(2)} · snow ${hoverCheckpoint.cp.snow_in_hr?.toFixed(2)} in/hr`}
+          </Typography>
+          <Typography variant="caption" component="div" color="text.disabled">
+            Click for details
+          </Typography>
+        </HoverTip>
+      )}
+
+      {hoverHeat && heatmap && (
+        <HoverTip lng={hoverHeat.lng} lat={hoverHeat.lat}>
+          <Typography variant="caption" component="div" sx={{ fontWeight: 600 }}>
+            <LevelDot color={levelColor(LEVELS[hoverHeat.level[hour] ?? 0].label)} />
+            {LEVELS[hoverHeat.level[hour] ?? 0].label} here at {formatLocalTime(heatmap.hours[hour])}
+          </Typography>
+          <Typography variant="caption" component="div" color="text.secondary">
+            Wind {hoverHeat.wind[hour]?.toFixed(0)} mph · rain {hoverHeat.rain[hour]?.toFixed(2)} · snow{' '}
+            {hoverHeat.snow[hour]?.toFixed(2)} in/hr
+          </Typography>
+        </HoverTip>
+      )}
     </Map>
+  )
+}
+
+type Hover = { kind: 'checkpoint'; routeId: string; index: number } | { kind: 'heat'; index: number }
+
+function hoverKey(hover: Hover | null): string {
+  if (!hover) return ''
+  return hover.kind === 'checkpoint' ? `cp:${hover.routeId}:${hover.index}` : `heat:${hover.index}`
+}
+
+/** A small, non-interactive popup that follows hover. */
+function HoverTip({ lng, lat, children }: { lng: number; lat: number; children: React.ReactNode }) {
+  return (
+    <Popup
+      longitude={lng}
+      latitude={lat}
+      offset={12}
+      closeButton={false}
+      closeOnClick={false}
+      maxWidth="320px"
+      style={{ zIndex: 4, pointerEvents: 'none' }}
+    >
+      {children}
+    </Popup>
+  )
+}
+
+function LevelDot({ color }: { color: string }) {
+  return (
+    <Box
+      component="span"
+      sx={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', bgcolor: color, mr: 0.75 }}
+    />
   )
 }
 

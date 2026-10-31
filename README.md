@@ -22,10 +22,11 @@ The driver enters an origin, a destination, a departure date/time and the load w
 
 - **Routes:** all three, with the selected one drawn wider and striped with the risk colour of each stretch of road. Click a route, its label or its card to select it.
 - **Route summaries on the map:** a label on each route with distance and time, plus risk miles for the selected route. The recommended route is starred.
-- **Checkpoints:** coloured by risk level. Click one for its ETA, wind, gusts, rain, snow, level and the rules that set the level.
-- **Heatmap:** weather risk across a 30-mile corridor around the routes, for any hour from departure to +48 h. All 49 hours load once, so the slider (and its play button) never waits on the network.
+- **Checkpoints:** coloured by risk level. Hover one for a quick summary; click it for its ETA, wind, gusts, rain, snow, level and the rules that set the level.
+- **Heatmap:** weather risk across a 30-mile corridor around the routes, for any hour from departure to +48 h. Hover anywhere in it to see the level and conditions there at that hour. All 49 hours load once, so the slider (and its play button) never waits on the network.
+- **Risk timeline:** above the slider, the selected route's hours coloured by the risk the truck meets on each stretch, with a flag at arrival. It shows at a glance *when* the truck hits bad weather, and the line above it says where the truck is at the slider's hour.
 - **Truck marker:** where the truck should be on the selected route at the slider's hour.
-- **Side panel:** the recommendation and why, then the routes ranked best first, each with a bar showing how many miles fall at each risk level.
+- **Side panel:** place suggestions as you type, live progress while planning ("Finding truck routes…", "Checking the forecast at 104 checkpoints…"), then the recommendation and why, and the routes ranked best first, each with a bar showing how many miles fall at each risk level.
 
 ## Tech stack
 

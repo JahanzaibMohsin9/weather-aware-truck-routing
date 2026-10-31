@@ -93,6 +93,14 @@ def test_past_departure_is_sent_to_tomtom_as_now():
     assert tomtom.depart_at == NOW + timedelta(minutes=1)
 
 
+def test_reports_progress_in_order():
+    steps = []
+    plan_trip(PlanRequest("origin", "destination", DEPART, 36000, 10), tomtom=FakeTomTom(),
+              weather=FakeWeather(), now=NOW, progress=lambda step, message: steps.append((step, message)))
+    assert [step for step, _ in steps] == ["places", "routes", "forecast", "scoring"]
+    assert steps[1][1] == "Finding truck routes from Origin, TX to Destination, TX"
+
+
 def test_same_place_is_rejected():
     with pytest.raises(InvalidTrip):
         plan(destination="same")  # different text, same geocoded place
