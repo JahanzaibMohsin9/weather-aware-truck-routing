@@ -1,0 +1,32 @@
+# --- Internal planning notes (not part of the submission) ---
+PLAN.md
+PROGRESS.md
+notes/
+*.pdf
+
+# --- Secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Python / Django ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+*.sqlite3
+staticfiles/
+
+# --- Node / Vite ---
+node_modules/
+dist/
+*.local
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
