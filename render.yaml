@@ -1,0 +1,38 @@
+# Render blueprint: the Django API and the static React site.
+# See README "Deploying" for the values to fill in after the first deploy.
+services:
+  - type: web
+    name: spotter-routing-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    # A plan request can take ~15 s while TomTom computes truck routes.
+    startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.10
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: TOMTOM_API_KEY
+        sync: false
+      # The static site's URL, e.g. https://spotter-routing-web.onrender.com
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+
+  - type: web
+    name: spotter-routing-web
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      # The API's URL, e.g. https://spotter-routing-api.onrender.com
+      - key: VITE_API_BASE_URL
+        sync: false
+    headers:
+      # Vite puts a content hash in asset file names, so they can be cached forever.
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable

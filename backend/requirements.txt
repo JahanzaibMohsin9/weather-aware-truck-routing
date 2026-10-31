@@ -4,7 +4,3 @@ django-cors-headers==4.9.0
 requests==2.34.2
 python-dotenv==1.2.4
 gunicorn==26.2.0
-
-# tests
-pytest==9.2.0
-pytest-django==4.14.0

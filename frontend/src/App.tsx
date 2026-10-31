@@ -7,6 +7,7 @@ import MapView from './components/MapView'
 import PlanForm from './components/PlanForm'
 import RouteCards from './components/RouteCards'
 import { useRequest } from './hooks/useRequest'
+import { useServerWake } from './hooks/useServerWake'
 import type { PlanResponse } from './types'
 
 /** The route to show first: the recommended one, else the best-ranked. */
@@ -16,6 +17,7 @@ function defaultRouteId(plan: PlanResponse | null): string | null {
 }
 
 export default function App() {
+  const server = useServerWake()
   const plan = useRequest(api.plan)
   const heat = useRequest(api.heatmap, { keepData: false })
   const { run: runHeat } = heat
@@ -64,6 +66,16 @@ export default function App() {
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Compare three truck routes by the weather the driver will meet along each one.
           </Typography>
+          {server === 'waking' && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Waking up the server. It sleeps when idle on free hosting, so this can take up to a minute.
+            </Alert>
+          )}
+          {server === 'unreachable' && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Can't reach the server right now. You can still try planning; it may be starting up.
+            </Alert>
+          )}
           <PlanForm loading={plan.loading} fieldErrors={plan.error?.fieldErrors ?? {}} onSubmit={plan.run} />
         </Box>
         {plan.loading && (
