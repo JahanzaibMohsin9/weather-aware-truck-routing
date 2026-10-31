@@ -1,5 +1,5 @@
 import { useCallback, useDeferredValue, useEffect, useState } from 'react'
-import { Alert, Box, Chip, Divider, Paper, Stack, Typography } from '@mui/material'
+import { Alert, Box, Chip, Collapse, Divider, Paper, Stack, Typography } from '@mui/material'
 import { api, type PlanProgress as PlanProgressEvent } from './api/client'
 import ForecastSlider from './components/ForecastSlider'
 import Legend from './components/Legend'
@@ -7,9 +7,11 @@ import MapView from './components/MapView'
 import PlanForm from './components/PlanForm'
 import PlanProgress from './components/PlanProgress'
 import RouteCards from './components/RouteCards'
+import TripSummary from './components/TripSummary'
 import { useRequest } from './hooks/useRequest'
 import { useServerWake } from './hooks/useServerWake'
 import type { PlanRequest, PlanResponse } from './types'
+import type { HeatMode } from './utils/heat'
 
 /** The route to show first: the recommended one, else the best-ranked. */
 function defaultRouteId(plan: PlanResponse | null): string | null {
@@ -45,6 +47,12 @@ export default function App() {
   // The slider follows the pointer immediately; the map renders the latest
   // hour at lower priority, skipping steps if it falls behind a fast drag.
   const mapHour = useDeferredValue(hour)
+  const [heatMode, setHeatMode] = useState<HeatMode>('risk')
+
+  // After a plan the form folds into a one-line summary; Edit reopens it.
+  // Tied to the plan it was opened on, so the next plan folds it again.
+  const [editing, setEditing] = useState<{ plan: PlanResponse | null; open: boolean }>({ plan: null, open: false })
+  const showForm = !plan.data || !!plan.error || (editing.plan === plan.data && editing.open)
   const coveredPoints = heat.data?.points.filter((p) => p.score[mapHour] != null).length ?? 0
   const totalPoints = heat.data?.points.length ?? 0
 
@@ -71,13 +79,21 @@ export default function App() {
           height: { xs: '50dvh', md: '100%' },
         }}
       >
+        <Box
+          component="header"
+          sx={{ px: 2, py: 1.75, bgcolor: 'primary.main', color: 'primary.contrastText', display: 'flex', gap: 1.5, alignItems: 'center' }}
+        >
+          <Box component="img" src="/favicon.svg" alt="" sx={{ width: 34, height: 34, borderRadius: 1.5, boxShadow: 2 }} />
+          <Box>
+            <Typography variant="h6" component="h1" sx={{ lineHeight: 1.2 }}>
+              Weather-Aware Truck Routing
+            </Typography>
+            <Typography variant="caption" sx={{ opacity: 0.85 }}>
+              Pick the safest of three truck routes, by the weather at the hour you'll be there
+            </Typography>
+          </Box>
+        </Box>
         <Box sx={{ p: 2 }}>
-          <Typography variant="h6" component="h1">
-            Weather-Aware Truck Routing
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Compare three truck routes by the weather the driver will meet along each one.
-          </Typography>
           {server === 'waking' && (
             <Alert severity="info" sx={{ mb: 2 }}>
               The server is taking a moment to respond. It may be starting up; this can take up to a minute.
@@ -88,7 +104,11 @@ export default function App() {
               Can't reach the server right now. You can still try planning; it may be starting up.
             </Alert>
           )}
-          <PlanForm loading={plan.loading} fieldErrors={plan.error?.fieldErrors ?? {}} onSubmit={plan.run} />
+          {/* The form stays mounted (keeping what was typed) and folds into a summary after planning. */}
+          <Collapse in={showForm} unmountOnExit={false}>
+            <PlanForm loading={plan.loading} fieldErrors={plan.error?.fieldErrors ?? {}} onSubmit={plan.run} />
+          </Collapse>
+          {!showForm && plan.data && <TripSummary plan={plan.data} onEdit={() => setEditing({ plan: plan.data, open: true })} />}
         </Box>
         {plan.loading && <PlanProgress events={progress.events} startedAt={progress.startedAt} />}
         {plan.error && !Object.keys(plan.error.fieldErrors).length && (
@@ -100,10 +120,6 @@ export default function App() {
           <>
             <Divider />
             <Stack spacing={1.5} sx={{ p: 2, opacity: plan.loading ? 0.5 : 1 }}>
-              <Typography variant="body2" color="text.secondary">
-                {plan.data.origin.label} → {plan.data.destination.label} ·{' '}
-                {plan.data.load_lbs.toLocaleString()} lb · every {plan.data.interval_miles} mi
-              </Typography>
               <Alert severity={plan.data.recommended_route_id ? 'success' : 'warning'} variant="outlined">
                 {plan.data.explanation}
               </Alert>
@@ -125,10 +141,11 @@ export default function App() {
           onSelect={onSelect}
           heatmap={heat.data}
           hour={mapHour}
+          heatMode={heatMode}
         />
         {plan.data && (
           <Box sx={{ position: 'absolute', top: 12, left: 12, zIndex: 4 }}>
-            <Legend showHeat={!!heat.data} />
+            <Legend heat={heat.data ? { mode: heatMode, onMode: setHeatMode, scales: heat.data.scales } : undefined} />
           </Box>
         )}
         {/* Above the map's markers (route labels, truck) so they never cover the controls. */}

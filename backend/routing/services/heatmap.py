@@ -13,6 +13,7 @@ from ..domain.corridor import corridor_grid
 from ..domain.forecast import SLIDER_HOURS
 from ..domain.geo import LatLng
 from ..domain.risk import assess, heat_score
+from ..domain.thresholds import RAIN_IN_HR, SNOW_IN_HR, WIND_MPH, Scale
 from .weather import OpenMeteoClient, weather_at
 
 HOURS = SLIDER_HOURS + 1  # 0..48
@@ -53,5 +54,16 @@ def build_heatmap(
     return {
         "hours": [t.strftime("%Y-%m-%dT%H:%M:%SZ") for t in times],
         "spacing_mi": spacing,
+        # Where each band starts (Moderate, High, Severe, No Travel), so the
+        # map can shade wind, rain or snow alone without its own copy of the rules.
+        "scales": {
+            "wind": _band_starts(WIND_MPH),
+            "rain": _band_starts(RAIN_IN_HR),
+            "snow": _band_starts(SNOW_IN_HR),
+        },
         "points": points,
     }
+
+
+def _band_starts(scale: Scale) -> list[float]:
+    return [scale.moderate_from, scale.high_from, scale.severe_from, scale.no_travel_from]

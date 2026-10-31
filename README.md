@@ -114,9 +114,14 @@ cd backend
 pytest
 ```
 
-Tests use `config.test_settings`, so they need no `.env` file, API key or network access.
+```bash
+cd frontend
+npm test
+```
 
-External APIs are mocked. The tests cover:
+Backend tests use `config.test_settings`, so they need no `.env` file, API key or network access. External APIs are mocked on both sides.
+
+The backend tests cover:
 
 - **Risk rules:** every boundary in the wind, rain and snow table (e.g. 34.9 / 35 mph, 1.00 / 1.0001 in/hr), each load rule on both sides of its weight limit, worst-condition-wins, and that load rules never lower a level.
 - **Ranking:** each tie-break in order, No Travel and missing-forecast routes ranking last, 0.821 beating 0.824 average risk even when much slower, and float noise falling through to travel time.
@@ -124,7 +129,9 @@ External APIs are mocked. The tests cover:
 - **Weather lookup:** which forecast hour is used for an ETA, rain + showers, beyond-forecast handling, batching and caching.
 - **Heatmap:** corridor grid stays within 30 mi of the routes, covers the whole route, respects the point cap and is stable across overlapping trips; heat score is linear between thresholds and always rounds down to the level.
 - **Routing:** checkpoint spacing, ETAs from TomTom's per-point times, overlap detection, topping up to three routes, retries, and rejecting weak geocode matches.
-- **API:** input validation and how provider errors map to HTTP status codes.
+- **API:** input validation, how provider errors map to HTTP status codes, the progress stream (progress lines, then the result or an error event), and place suggestions.
+
+The frontend tests (Vitest) cover the logic the UI relies on: the risk timeline's time ranges, shading one condition on its threshold scale, positions along a route by mile and by time, the nearest heatmap point for hover, the heatmap frames, the risk stripe on the selected route, and the streaming client, including a JSON line split across two network chunks.
 
 ## Assumptions
 

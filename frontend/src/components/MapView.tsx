@@ -16,6 +16,7 @@ import type { HeatmapResponse, PlanResponse, Route } from '../types'
 import { LEVELS, ROUTE_COLORS, levelColor } from '../theme/colors'
 import { formatDuration, formatLocalTime, formatMiles } from '../utils/format'
 import { MeasuredLine, mileAtTime, nearestHeatPoint } from '../utils/geo'
+import type { HeatMode } from '../utils/heat'
 import CheckpointPopup from './CheckpointPopup'
 import {
   CHECKPOINT_LAYER,
@@ -42,9 +43,11 @@ interface Props {
   onSelect: (id: string) => void
   heatmap: HeatmapResponse | null
   hour: number
+  /** What the heatmap shades: overall risk, or one condition. */
+  heatMode: HeatMode
 }
 
-export default function MapView({ plan, selectedId, onSelect, heatmap, hour }: Props) {
+export default function MapView({ plan, selectedId, onSelect, heatmap, hour, heatMode }: Props) {
   const mapRef = useRef<MapRef>(null)
   // A popup belongs to the routes it was opened on, so a new plan closes it without an effect.
   const [popupState, setPopupState] = useState<{ routes: Route[]; routeId: string; index: number } | null>(null)
@@ -63,7 +66,7 @@ export default function MapView({ plan, selectedId, onSelect, heatmap, hour }: P
   const routeData = useMemo(() => routeLines(routes, selectedId), [routes, selectedId])
   const segmentData = useMemo(() => riskSegments(selected, selected && lines[selected.id]), [selected, lines])
   const checkpointData = useMemo(() => checkpointPoints(routes, selectedId), [routes, selectedId])
-  const frames = useMemo(() => (heatmap ? heatFrames(heatmap) : []), [heatmap])
+  const frames = useMemo(() => (heatmap ? heatFrames(heatmap, heatMode) : []), [heatmap, heatMode])
   const radius = useMemo(() => {
     if (!heatmap || !plan) return 0
     return heatRadius(heatmap.spacing_mi, (plan.origin.lat + plan.destination.lat) / 2)

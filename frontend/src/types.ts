@@ -77,8 +77,12 @@ export interface HeatPoint {
   snow: (number | null)[]
 }
 
+export type Condition = 'wind' | 'rain' | 'snow'
+
 export interface HeatmapResponse {
   hours: string[]
   spacing_mi: number
+  /** Where each band starts for each condition: [Moderate, High, Severe, No Travel]. */
+  scales: Record<Condition, number[]>
   points: HeatPoint[]
 }

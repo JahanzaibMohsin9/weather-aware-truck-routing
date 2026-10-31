@@ -75,16 +75,18 @@ The edges of the corridor fade naturally because they have fewer neighbours.
 
 | Path | Contents |
 |---|---|
-| `src/api/client.ts` | Typed client for the endpoints; turns error responses into messages and per-field errors |
+| `src/api/client.ts` | Typed client for the endpoints, including the line-by-line reader for the planning stream; turns error responses into messages and per-field errors |
 | `src/hooks/useRequest.ts` | One request at a time: a new request aborts the previous one, so a slow old response can't overwrite a newer one |
-| `src/components/PlanForm.tsx` | Trip form with inline validation errors |
+| `src/components/PlanForm.tsx`, `PlaceField.tsx` | Trip form with inline validation errors; place fields with suggestions as you type (debounced, cached) |
+| `src/components/PlanProgress.tsx` | The planning steps, ticking off as the server reports them, with its live message and the elapsed time |
+| `src/components/TripSummary.tsx` | The planned trip in one line with Edit; the form folds into it after planning so the results fit on screen |
 | `src/components/RouteCards.tsx` | Ranked route cards: badges, distance, time, arrival, risk miles, and a bar of miles per risk level |
-| `src/components/MapView.tsx` | The map: routes, risk-coloured stripe on the selected route, checkpoints, route summary labels, heatmap, truck marker |
-| `src/components/map/layers.ts` | Builds the GeoJSON and heatmap styling for the map |
+| `src/components/MapView.tsx` | The map: routes, risk-coloured stripe on the selected route, checkpoints, route summary labels, heatmap, truck marker, and hover tooltips for checkpoints and the heatmap |
+| `src/components/map/layers.ts` | Builds the GeoJSON and heatmap styling for the map, in risk mode or for one condition |
 | `src/components/CheckpointPopup.tsx` | Checkpoint details: ETA, wind, gusts, rain, snow, level and the rules that set it |
-| `src/components/ForecastSlider.tsx` | 0–48 h slider with play/pause |
-| `src/components/Legend.tsx` | Risk colours and heat scale; collapsed by default on phones |
-| `src/utils/` | Formatting and route geometry helpers (position along a route by mile or by time) |
+| `src/components/ForecastSlider.tsx`, `RiskTimeline.tsx` | 0–48 h slider with play/pause; above it, the selected route's hours coloured by risk, and where the truck is at the slider's hour |
+| `src/components/Legend.tsx` | Risk colours, the heatmap's Risk / Wind / Rain / Snow switch and its scale; collapsed by default on phones |
+| `src/utils/` | Pure helpers with unit tests: formatting, route geometry (position by mile or by time, nearest heat point), the risk timeline, and single-condition heat shading |
 | `src/maplibreSetup.ts` | Points MapLibre at its web worker; Vite's bundling otherwise breaks the worker URL |
 
 Times are shown in the viewer's own time zone.

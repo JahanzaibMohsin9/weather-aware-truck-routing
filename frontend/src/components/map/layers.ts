@@ -1,6 +1,7 @@
 import type { FeatureCollection, LineString, Point } from 'geojson'
 import type { HeatmapLayerSpecification } from 'react-map-gl/maplibre'
-import type { HeatmapResponse, Route } from '../../types'
+import type { HeatmapResponse, HeatPoint, Route } from '../../types'
+import { scalePosition, type HeatMode } from '../../utils/heat'
 import { levelColor, ROUTE_COLORS } from '../../theme/colors'
 import { MeasuredLine } from '../../utils/geo'
 
@@ -55,20 +56,30 @@ export function checkpointPoints(routes: Route[], selectedId: string | null): Fe
 }
 
 /**
- * One FeatureCollection per forecast hour, built once. Moving the slider just
- * swaps which one the heatmap source shows; nothing is fetched or recomputed.
- * Points with no forecast for an hour are left out (no heat, never "Low").
+ * One FeatureCollection per forecast hour, built once per mode. Moving the
+ * slider just swaps which one the heatmap source shows; nothing is fetched or
+ * recomputed. Points with no forecast for an hour are left out (no heat,
+ * never "Low"). In "risk" mode the score is the backend's heat score; for a
+ * single condition it is that condition's position on its own threshold scale.
  */
-export function heatFrames(heatmap: HeatmapResponse): FeatureCollection<Point>[] {
+export function heatFrames(heatmap: HeatmapResponse, mode: HeatMode = 'risk'): FeatureCollection<Point>[] {
+  const scoreAt = (p: HeatPoint, hour: number): number | null => {
+    if (mode === 'risk') return p.score[hour]
+    const value = p[mode][hour]
+    return value == null ? null : scalePosition(value, heatmap.scales[mode])
+  }
   return heatmap.hours.map((_, hour) => ({
     type: 'FeatureCollection',
-    features: heatmap.points
-      .filter((p) => p.score[hour] != null)
-      .map((p) => ({
-        type: 'Feature' as const,
-        properties: { score: p.score[hour], level: p.level[hour] },
-        geometry: { type: 'Point' as const, coordinates: [p.lng, p.lat] },
-      })),
+    features: heatmap.points.flatMap((p) => {
+      const score = scoreAt(p, hour)
+      return score == null
+        ? []
+        : [{
+            type: 'Feature' as const,
+            properties: { score, level: p.level[hour] },
+            geometry: { type: 'Point' as const, coordinates: [p.lng, p.lat] },
+          }]
+    }),
   }))
 }
 

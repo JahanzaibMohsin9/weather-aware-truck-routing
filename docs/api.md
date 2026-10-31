@@ -175,6 +175,7 @@ The same request and the same plan as `POST /api/plan`, but the response is stre
 |---|---|
 | `hours` | 49 hourly timestamps, hour 0 to hour 48 |
 | `spacing_mi` | Distance between grid points. The map uses it to size the heat radius. |
+| `scales` | For `wind`, `rain` and `snow`: where Moderate, High, Severe and No Travel start, e.g. `"wind": [25, 35, 45, 55]`. The map uses them to shade one condition alone, without its own copy of the thresholds. |
 | `level` | 0–4, the same thresholds and load rules as the checkpoints |
 | `score` | Continuous 0–4 for drawing the heat; its whole part always equals `level` (see [risk model](risk-model.md#heat-score)) |
 | `wind`, `rain`, `snow` | mph, in/hr (rain + showers), in/hr |

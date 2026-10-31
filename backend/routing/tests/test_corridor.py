@@ -79,6 +79,11 @@ class TestBuildHeatmap:
         assert point["level"][48] == 4  # 48 mph with 45,000 lb: No Travel via the load rule
         assert point["score"][48] == 4
 
+    def test_includes_the_threshold_scales(self):
+        result = build_heatmap([ROUTE], load_lbs=1, start=datetime(2026, 11, 2, tzinfo=timezone.utc),
+                               weather=FakeWeather())
+        assert result["scales"] == {"wind": [25, 35, 45, 55], "rain": [0.10, 0.25, 0.50, 1.00], "snow": [0.5, 1.0, 2.0, 3.0]}
+
     def test_hours_past_the_forecast_are_null(self):
         result = build_heatmap([ROUTE], load_lbs=1, start=datetime(2026, 11, 2, 0, tzinfo=timezone.utc),
                                weather=FakeWeather(hours=30))
