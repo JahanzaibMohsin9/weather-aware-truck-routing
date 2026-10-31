@@ -129,6 +129,18 @@ class TestCalculateRoutes:
         with pytest.raises(NoRouteFound):
             client.calculate_routes([(0, 0), (1, 1)], load_lbs=1, depart_at=datetime.now(timezone.utc))
 
+    def test_point_off_the_road_network_is_no_route(self):
+        # Live example: a sideways via point for Key West -> Marathon landed in the sea.
+        text = '{"detailedError":{"code":"MAP_MATCHING_FAILURE","message":"Waypoint 0 (24.52, -81.40)"}}'
+        client, _ = client_with(FakeResponse(400, text=text))
+        with pytest.raises(NoRouteFound):
+            client.calculate_routes([(0, 0), (1, 1)], load_lbs=1, depart_at=datetime.now(timezone.utc))
+
+    def test_other_bad_request_is_a_provider_error(self):
+        client, _ = client_with(FakeResponse(400, text='{"detailedError":{"code":"INVALID_REQUEST"}}'))
+        with pytest.raises(ProviderError):
+            client.calculate_routes([(0, 0), (1, 1)], load_lbs=1, depart_at=datetime.now(timezone.utc))
+
 
 class TestFailures:
     def test_http_error_after_retry(self):

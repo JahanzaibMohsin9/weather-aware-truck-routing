@@ -26,6 +26,10 @@ COUNTRY_SET = "US"
 # Real places score 1.0; fuzzy guesses ("asdf" -> "Asaf Drive") score ~0.6-0.8.
 MIN_MATCH_CONFIDENCE = 0.85
 GEOCODE_CACHE_SECONDS = 24 * 3600
+# Routing errors that mean "no route through these points", not a service failure.
+# MAP_MATCHING_FAILURE: a point isn't near any road, e.g. a sideways via point
+# that lands in the sea (seen live on Key West -> Marathon).
+NO_ROUTE_CODES = ("NO_ROUTE_FOUND", "MAP_MATCHING_FAILURE")
 
 
 @dataclass(frozen=True)
@@ -151,7 +155,11 @@ class TomTomClient:
             raise ProviderTimeout("TomTom was too slow") from exc
         except requests.RequestException as exc:
             raise ProviderError(f"TomTom request failed: {exc.__class__.__name__}") from exc
-        if no_route_ok and response.status_code in (400, 404) and "NO_ROUTE_FOUND" in response.text:
+        if (
+            no_route_ok
+            and response.status_code in (400, 404)
+            and any(code in response.text for code in NO_ROUTE_CODES)
+        ):
             raise NoRouteFound(path)
         if response.status_code != 200:
             raise ProviderError(f"TomTom returned HTTP {response.status_code}")
