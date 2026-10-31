@@ -2,11 +2,9 @@
 
 A React + Django web app that helps a truck driver choose the safest route between two places, based on the forecast weather along each route, the truck's load weight and the travel time.
 
-> **Status:** feature-complete locally; deployment and walkthrough next. Sections marked *TBD* are filled in then.
-
 | | |
 |---|---|
-| Live app | *TBD* |
+| Live app | https://weather-aware-truck-routing-ccb92e0eafd6.herokuapp.com |
 | Walkthrough (Loom) | *TBD* |
 
 ## What it does
