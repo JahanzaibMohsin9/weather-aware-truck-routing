@@ -1,7 +1,9 @@
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
 import requests
+from django.core.cache.backends.locmem import LocMemCache
 
 from routing.services.errors import NoRouteFound, PlaceNotFound, ProviderError
 from routing.services.tomtom import TomTomClient
@@ -20,7 +22,10 @@ class FakeResponse:
 
 
 class FakeSession:
-    def __init__(self, response=None, error=None):
+    """Returns `response` for every call, or each of `responses` in turn."""
+
+    def __init__(self, response=None, error=None, responses=None):
+        self.responses = list(responses) if responses else None
         self.response = response
         self.error = error
         self.calls = []
@@ -29,12 +34,25 @@ class FakeSession:
         self.calls.append((url, params))
         if self.error:
             raise self.error
-        return self.response
+        return self.responses.pop(0) if self.responses else self.response
 
 
-def client_with(response=None, error=None):
-    session = FakeSession(response, error)
-    return TomTomClient("test-key", session=session), session
+def client_with(response=None, error=None, responses=None):
+    session = FakeSession(response, error, responses)
+    cache = LocMemCache(f"test-{uuid.uuid4()}", {})
+    return TomTomClient("test-key", session=session, cache=cache), session
+
+
+def geocode_payload(label="Dallas, TX", confidence=1.0):
+    return {
+        "results": [
+            {
+                "address": {"freeformAddress": label},
+                "position": {"lat": 32.78, "lon": -96.8},
+                "matchConfidence": {"score": confidence},
+            }
+        ]
+    }
 
 
 ROUTE_PAYLOAD = {
@@ -56,22 +74,30 @@ ROUTE_PAYLOAD = {
 
 class TestGeocode:
     def test_parses_top_result(self):
-        payload = {
-            "results": [
-                {"address": {"freeformAddress": "Dallas, TX"}, "position": {"lat": 32.78, "lon": -96.8}}
-            ]
-        }
-        client, session = client_with(FakeResponse(payload=payload))
+        client, session = client_with(FakeResponse(payload=geocode_payload()))
         place = client.geocode("Dallas, TX")
         assert (place.label, place.lat, place.lng) == ("Dallas, TX", 32.78, -96.8)
         url, params = session.calls[0]
         assert url.endswith("/search/2/geocode/Dallas%2C%20TX.json")
         assert ("key", "test-key") in params
+        assert ("countrySet", "US") in params  # "US,CA" misreads "WY" as "Way"
 
     def test_no_results(self):
         client, _ = client_with(FakeResponse(payload={"results": []}))
         with pytest.raises(PlaceNotFound):
             client.geocode("Nowhere at all")
+
+    def test_weak_match_is_rejected(self):
+        # Live example: "Qwxzzy Nowhere" -> "Nowhere Road, VA" with confidence 0.601.
+        client, _ = client_with(FakeResponse(payload=geocode_payload("Nowhere Road, VA", 0.601)))
+        with pytest.raises(PlaceNotFound):
+            client.geocode("Qwxzzy Nowhere")
+
+    def test_results_are_cached_by_normalized_text(self):
+        client, session = client_with(FakeResponse(payload=geocode_payload()))
+        client.geocode("Dallas, TX")
+        client.geocode("  dallas,   tx ")
+        assert len(session.calls) == 1
 
 
 class TestCalculateRoutes:
@@ -105,10 +131,24 @@ class TestCalculateRoutes:
 
 
 class TestFailures:
-    def test_http_error(self):
-        client, _ = client_with(FakeResponse(500, text="boom"))
+    def test_http_error_after_retry(self):
+        client, session = client_with(FakeResponse(500, text="boom"))
         with pytest.raises(ProviderError):
             client.geocode("Dallas")
+        assert len(session.calls) == 2
+
+    def test_temporary_error_is_retried(self):
+        client, session = client_with(
+            responses=[FakeResponse(503, text="busy"), FakeResponse(payload=geocode_payload())]
+        )
+        assert client.geocode("Dallas, TX").label == "Dallas, TX"
+        assert len(session.calls) == 2
+
+    def test_client_error_is_not_retried(self):
+        client, session = client_with(FakeResponse(403, text="forbidden"))
+        with pytest.raises(ProviderError):
+            client.geocode("Dallas")
+        assert len(session.calls) == 1
 
     def test_network_error(self):
         client, _ = client_with(error=requests.ConnectionError())

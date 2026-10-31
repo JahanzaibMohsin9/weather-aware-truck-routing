@@ -1,3 +1,4 @@
+import time
 from datetime import datetime, timezone
 
 import pytest
@@ -26,21 +27,30 @@ STRAIGHT_WITH_DETOUR = raw(ORIGIN, (32.0, -99.0), (33.0, -99.0), (32.0, -99.0), 
 
 
 class FakeClient:
-    """Answers by request kind: main call, extra route types, via-point calls."""
+    """Answers by request kind: main call, extra route types, via-point calls.
 
-    def __init__(self, main, by_type=None, via=None):
+    Extra requests run in parallel, so via answers are keyed by which side of
+    the east-going trip the via point is on, not by call order. The first
+    side tried (+90° from east) is south.
+    """
+
+    def __init__(self, main, by_type=None, via=None, delays=None):
         self.main = main
         self.by_type = by_type or {}
-        self.via = list(via or [])
+        self.via = via or {}
+        self.delays = delays or {}
         self.calls = []
 
     def calculate_routes(self, locations, *, load_lbs, depart_at, route_type="fastest", max_alternatives=0):
         if len(locations) == 3:
+            kind = "south" if locations[1][0] < ORIGIN[0] else "north"
             self.calls.append("via")
-            result = self.via.pop(0)
+            result = self.via.get(kind, [])
         else:
+            kind = route_type
             self.calls.append(route_type)
             result = self.main if route_type == "fastest" else self.by_type.get(route_type, [])
+        time.sleep(self.delays.get(kind, 0))
         if isinstance(result, Exception):
             raise result
         return result
@@ -58,38 +68,55 @@ def test_three_from_first_call_makes_one_request():
     assert notes == []
 
 
+ALL_EXTRA_CALLS = sorted(["fastest", "shortest", "eco", "via", "via"])
+
+
 def test_tops_up_with_route_types_then_via_and_drops_duplicates():
     client = FakeClient(
         main=[STRAIGHT, STRAIGHT_COPY],
         by_type={"shortest": [NORTH], "eco": [NORTH_COPY]},
-        via=[[SOUTH]],
+        via={"south": [SOUTH]},
     )
     routes, notes = run(client)
     assert [r.source for r in routes] == ["fastest", "shortest", "via"]
-    assert client.calls == ["fastest", "shortest", "eco", "via"]
+    assert sorted(client.calls) == ALL_EXTRA_CALLS
     assert notes == []
+
+
+def test_priority_order_not_completion_order():
+    # The shortest-route answer arrives last but still outranks the via route.
+    client = FakeClient(
+        main=[STRAIGHT],
+        by_type={"shortest": [NORTH]},
+        via={"south": [SOUTH]},
+        delays={"shortest": 0.05},
+    )
+    routes, _ = run(client)
+    assert [r.source for r in routes] == ["fastest", "shortest", "via"]
 
 
 def test_existing_route_plus_detour_is_a_duplicate():
     # Seen live on Dallas -> Denver: a via route that was the fastest route plus a detour.
-    client = FakeClient(main=[STRAIGHT, NORTH], via=[[STRAIGHT_WITH_DETOUR], [SOUTH]])
+    client = FakeClient(main=[STRAIGHT, NORTH], via={"south": [STRAIGHT_WITH_DETOUR], "north": [SOUTH]})
     routes, _ = run(client)
     assert [r.source for r in routes] == ["fastest", "alternative", "via"]
     assert routes[2].points == SOUTH.points
 
 
-def test_via_without_route_tries_other_side():
-    client = FakeClient(main=[STRAIGHT], by_type={"shortest": [NORTH]}, via=[NoRouteFound("lake"), [SOUTH]])
+def test_via_without_route_uses_other_side():
+    client = FakeClient(
+        main=[STRAIGHT], by_type={"shortest": [NORTH]}, via={"south": NoRouteFound("lake"), "north": [SOUTH]}
+    )
     routes, _ = run(client)
     assert [r.source for r in routes] == ["fastest", "shortest", "via"]
-    assert client.calls == ["fastest", "shortest", "eco", "via", "via"]
+    assert sorted(client.calls) == ALL_EXTRA_CALLS
 
 
 def test_reports_when_fewer_than_three_exist():
     client = FakeClient(
         main=[STRAIGHT],
         by_type={"shortest": [STRAIGHT_COPY], "eco": [STRAIGHT]},
-        via=[[STRAIGHT_COPY], [STRAIGHT]],
+        via={"south": [STRAIGHT_COPY], "north": [STRAIGHT]},
     )
     routes, notes = run(client)
     assert len(routes) == 1

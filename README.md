@@ -81,7 +81,14 @@ cd backend
 pytest
 ```
 
-External APIs are mocked, so tests need no key or network. They cover so far: distances, checkpoint spacing, ETAs from the routing API's per-point times, nearest-checkpoint mileage, route overlap detection, topping up to three routes, and TomTom request/response handling. Risk thresholds, load rules and ranking tests come with those modules.
+External APIs are mocked, so tests need no key or network. They cover:
+
+- **Risk rules:** every boundary in the wind, rain and snow table (e.g. 34.9 / 35 mph, 1.00 / 1.0001 in/hr), each load rule on both sides of its weight limit, worst-condition-wins, and that load rules never lower a level.
+- **Ranking:** each tie-break in order, No Travel and missing-forecast routes ranking last, 0.821 beating 0.824 average risk even when much slower, and float noise falling through to travel time.
+- **Mileage:** nearest-checkpoint attribution, including a No Travel reading at the destination.
+- **Weather lookup:** which forecast hour is used for an ETA, rain + showers, beyond-forecast handling, batching and caching.
+- **Routing:** checkpoint spacing, ETAs from TomTom's per-point times, overlap detection, topping up to three routes, retries, and rejecting weak geocode matches.
+- **API:** input validation and how provider errors map to HTTP status codes.
 
 ## Assumptions
 
@@ -98,6 +105,8 @@ These are choices where the brief leaves room for interpretation. Details are in
 - **No Travel routes:** the brief's ranking doesn't mention No Travel, so any route with a No Travel checkpoint ranks after every route without one and is flagged as not recommended.
 - **Forecast horizon:** departures can be up to 14 days ahead. Checkpoints whose ETA is still beyond the forecast are shown as "No Forecast", not as Low risk, and a route with such gaps ranks after fully covered routes.
 - **Heatmap time:** slider hour 0 is the departure hour.
+- **US only:** places are geocoded in the US. Including Canada made TomTom read state codes as street names ("Cheyenne, WY" became "Cheyenne Way, Ontario").
+- **Place matching:** if TomTom's best match is only a fuzzy guess, the app says it couldn't find the place rather than planning a trip somewhere else. The matched place name is shown with the plan.
 
 ## Known limitations
 
@@ -106,3 +115,6 @@ These are choices where the brief leaves room for interpretation. Details are in
 - Free-tier hosting may sleep when idle, so the first request after a pause can be slow.
 - Forecasts are hourly; conditions inside an hour are not modelled.
 - No Hours-of-Service rest stops in ETAs (see Assumptions).
+- Planning a long trip takes about 8–17 seconds, mostly TomTom computing truck alternatives. See [architecture](docs/architecture.md#where-the-time-goes).
+- Routes found through a sideways via-point can include a short detour to reach that point.
+- Canadian and Mexican places aren't supported.

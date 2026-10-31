@@ -8,3 +8,7 @@ class PlaceNotFound(Exception):
 
 class NoRouteFound(Exception):
     """The routing API found no route between the points (HTTP 422)."""
+
+
+class InvalidTrip(Exception):
+    """The input is well-formed but the trip can't be planned (HTTP 422)."""

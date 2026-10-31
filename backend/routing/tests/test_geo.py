@@ -15,6 +15,7 @@ from routing.domain.geo import (
     point_at_mile,
     resample,
     shared_fraction,
+    simplify,
 )
 
 DEPARTURE = datetime(2026, 11, 2, 12, 0, tzinfo=timezone.utc)
@@ -58,6 +59,21 @@ class TestDistances:
         samples = resample(north_line(10), 1)
         assert len(samples) == 11
         assert haversine_mi(samples[0], samples[1]) == pytest.approx(1, abs=1e-6)
+
+
+class TestSimplify:
+    def test_drops_collinear_points(self):
+        line = [(0, k / 10) for k in range(11)]
+        assert simplify(line, 1e-6) == [(0, 0), (0, 1)]
+
+    def test_keeps_corners(self):
+        corner = [(0, 0), (0, 0.5), (0, 1), (0.5, 1), (1, 1)]
+        assert simplify(corner, 1e-6) == [(0, 0), (0, 1), (1, 1)]
+
+    def test_keeps_deviation_above_tolerance_only(self):
+        wiggle = [(0, 0), (0.0001, 0.5), (0, 1)]
+        assert simplify(wiggle, 0.001) == [(0, 0), (0, 1)]
+        assert simplify(wiggle, 0.00001) == wiggle
 
 
 class TestCheckpointMiles:

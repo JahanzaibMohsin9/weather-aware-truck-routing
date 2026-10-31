@@ -84,6 +84,34 @@ def resample(points: Sequence[LatLng], step_mi: float) -> list[LatLng]:
     return [point_at_mile(points, cum, total * k / count) for k in range(count + 1)]
 
 
+def simplify(points: Sequence[LatLng], tolerance_deg: float) -> list[LatLng]:
+    """Ramer-Douglas-Peucker: drop points that sit within `tolerance_deg` of
+    the line through their neighbours. Used to shrink geometry for the map."""
+    if len(points) < 3:
+        return list(points)
+    keep = [False] * len(points)
+    keep[0] = keep[-1] = True
+    stack = [(0, len(points) - 1)]
+    while stack:
+        first, last = stack.pop()
+        (ay, ax), (by, bx) = points[first], points[last]
+        dx, dy = bx - ax, by - ay
+        length = math.hypot(dx, dy)
+        worst, worst_i = 0.0, -1
+        for i in range(first + 1, last):
+            py, px = points[i]
+            if length == 0:
+                d = math.hypot(px - ax, py - ay)
+            else:
+                d = abs(dy * (px - ax) - dx * (py - ay)) / length
+            if d > worst:
+                worst, worst_i = d, i
+        if worst > tolerance_deg:
+            keep[worst_i] = True
+            stack += [(first, worst_i), (worst_i, last)]
+    return [p for p, k in zip(points, keep) if k]
+
+
 @dataclass(frozen=True)
 class TimeProfile:
     """Cumulative travel time (seconds) against distance along a route (miles).
@@ -173,20 +201,29 @@ def coverage_miles(miles: Sequence[float]) -> list[float]:
     return [hi - lo for lo, hi in zip(bounds, bounds[1:])]
 
 
-def shared_fraction(
-    a: Sequence[LatLng], b: Sequence[LatLng], tolerance_mi: float = 0.3
-) -> float:
-    """Fraction of route `a`'s length lying within `tolerance_mi` of route `b`.
+OVERLAP_TOLERANCE_MI = 0.3
 
-    Both routes are resampled so long straight segments can't hide overlap,
-    and `b`'s samples go into a grid so each lookup checks only nearby cells.
+
+def overlap_samples(points: Sequence[LatLng]) -> list[LatLng]:
+    """Evenly spaced points for `shared_fraction_of_samples`, so long straight
+    segments with few vertices can't hide overlap. Compute once per route."""
+    return resample(points, OVERLAP_TOLERANCE_MI)
+
+
+def shared_fraction(a: Sequence[LatLng], b: Sequence[LatLng]) -> float:
+    """Fraction of route `a`'s length lying within ~0.3 mi of route `b`."""
+    return shared_fraction_of_samples(overlap_samples(a), overlap_samples(b))
+
+
+def shared_fraction_of_samples(samples_a: Sequence[LatLng], samples_b: Sequence[LatLng]) -> float:
+    """`shared_fraction` on routes already passed through `overlap_samples`.
+
+    `b`'s samples go into a grid so each lookup checks only nearby cells.
     """
-    step_b = tolerance_mi
-    threshold = tolerance_mi + step_b / 2  # every point of b is within step/2 of a sample
-    samples_a = resample(a, 0.5)
-    samples_b = resample(b, step_b)
+    # Every point on b is within half a step of one of its samples.
+    threshold = OVERLAP_TOLERANCE_MI * 1.5
 
-    max_lat = max(abs(lat) for lat, _ in samples_a + samples_b)
+    max_lat = max(abs(lat) for lat, _ in [*samples_a, *samples_b])
     cell_lat = threshold / MILES_PER_DEGREE_LAT
     cell_lng = threshold / (MILES_PER_DEGREE_LAT * math.cos(math.radians(min(max_lat, 89))))
 

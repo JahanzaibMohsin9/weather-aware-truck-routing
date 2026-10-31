@@ -23,13 +23,17 @@
 ## Planning a trip (`POST /api/plan`)
 
 1. **Validate** the request: origin and destination differ, load > 0, interval is 10, 25 or 50, departure is not in the past and at most 14 days ahead.
-2. **Geocode** origin and destination.
-3. **Get routes** from TomTom in truck mode with the load weight and two alternatives (3 routes total). If fewer come back, the backend tops up with other route types and then a via-point pushed sideways from the main route, and drops near-duplicates. Only when no distinct third route exists does it return fewer, and the response says so; the app doesn't make routes up.
+2. **Geocode** origin and destination in parallel, US only. Weak fuzzy matches (TomTom match confidence below 0.85) are rejected rather than guessed. Results are cached for a day.
+3. **Get routes** from TomTom in truck mode with the load weight, the departure time (so it uses historical traffic for that time of day) and two alternatives. If fewer than 3 distinct routes come back, the backend sends four top-up requests in parallel: the `shortest` and `eco` route types, and routes through a point pushed sideways from the main route on each side. It then takes them in that priority order, dropping any route where more than 90% of either route lies on the other. Only when no distinct third route exists does it return fewer, and the response says so; the app doesn't make routes up.
 4. **Place checkpoints** by walking each route's polyline with haversine distance and dropping a point every N miles, plus the start and end.
 5. **Estimate ETAs:** departure time plus the routing API's cumulative travel time at that point along the route. All times are UTC internally and shown in local time in the browser.
 6. **Fetch weather** for all checkpoints in batched Open-Meteo requests and read the value for each checkpoint's ETA. If the weather API fails, the whole request fails rather than returning a plan with gaps.
 7. **Classify** each checkpoint, assign each mile of road to its nearest checkpoint, and **rank** the routes (see [risk model](risk-model.md)).
-8. **Respond** with routes, checkpoints, summaries, the recommended route and a one-line reason for the pick.
+8. **Respond** with routes, checkpoints, summaries, the recommended route and a one-line reason for the pick. Route geometry is simplified (Ramer–Douglas–Peucker, ~50 m) from about 10,000 points to about 500–1,500, so a 900-mile plan is about 60 KB.
+
+### Where the time goes
+
+A long trip takes about 8–17 seconds to plan, measured locally. Most of it is TomTom calculating truck routes with alternatives (about 2–6 s per call), plus one more round of routing calls when top-up is needed, and about 2–3 s for the weather batch. Geocoding and top-up requests run in parallel, and weather and geocoding are cached, so repeat plans are faster. The UI shows a loading state during this time.
 
 ## Heatmap (`POST /api/heatmap`)
 
@@ -43,9 +47,10 @@ The forecast slider has to feel instant, so the heatmap is built to need no netw
 
 ## Caching and limits
 
-- Weather responses are cached by rounded coordinates and hour for 15–30 minutes, so re-planning the same trip or moving between routes doesn't refetch.
-- Open-Meteo's free tier counts each location in a batch as one call (600/min, 10,000/day), so batches are chunked and cached.
-- TomTom's free tier allows 2,500 requests/day; one trip plan uses three (two geocodes and one routing call).
+- Forecasts are cached per location (coordinates rounded to 0.01°, about 0.7 mi) for 30 minutes, so re-planning the same trip or nearby checkpoints don't refetch.
+- Open-Meteo's free tier counts each location in a batch as one call (600/min, 10,000/day). Batches are chunked to 100 locations; a 900-mile trip at 25-mile spacing is about 110 locations.
+- TomTom's free tier allows 2,500 requests/day. A plan uses 3 calls (two geocodes and one routing call) when TomTom returns 3 distinct routes, and 7 when top-up is needed. Cached geocodes bring that down.
+- Calls to both providers are retried once after a short pause on rate limits, 5xx errors and network errors.
 
 ## Frontend structure
 
