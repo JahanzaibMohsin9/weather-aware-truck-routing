@@ -38,7 +38,7 @@ The driver enters an origin, a destination, a departure date/time and the load w
 
 ## Running locally
 
-*TBD once the backend and frontend are scaffolded.* The outline:
+Requires Python 3.12 and Node 20+. Get a free TomTom key at developer.tomtom.com.
 
 ```bash
 # backend
@@ -48,6 +48,12 @@ python -m venv .venv
 pip install -r requirements.txt
 copy .env.example .env          # macOS/Linux: cp; then add your TomTom key
 python manage.py runserver
+```
+
+To check routing on a real trip without the UI:
+
+```bash
+python manage.py check_routes "Dallas, TX" "Denver, CO" --load 36000 --interval 25
 ```
 
 ```bash
@@ -70,7 +76,12 @@ API keys stay on the backend; the browser never sees them.
 
 ## Tests
 
-*TBD.* Backend tests cover every risk threshold boundary, the load rules, route ranking tie-breaks and checkpoint spacing. External APIs are mocked.
+```bash
+cd backend
+pytest
+```
+
+External APIs are mocked, so tests need no key or network. They cover so far: distances, checkpoint spacing, ETAs from the routing API's per-point times, nearest-checkpoint mileage, route overlap detection, topping up to three routes, and TomTom request/response handling. Risk thresholds, load rules and ranking tests come with those modules.
 
 ## Assumptions
 
