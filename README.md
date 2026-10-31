@@ -11,7 +11,7 @@ A React + Django web app that helps a truck driver choose the safest route betwe
 
 The driver enters an origin, a destination, a departure date/time and the load weight in pounds. The app then:
 
-1. Gets **3 distinct route options** from a routing API, requesting alternatives on fallback searches too. If those searches cannot produce three, the app explains that the comparison could not be completed.
+1. Gets **3 distinct route options** from a routing API, running extra searches when the API returns fewer. If a trip genuinely has fewer distinct roads, the app shows the routes it found and says so.
 2. Places a **checkpoint every 10, 25 or 50 miles** along each route (the driver picks the interval, default 25).
 3. Works out the truck's **estimated arrival time** at each checkpoint and fetches the forecast for that place at that time.
 4. Classifies each checkpoint as **Low, Moderate, High, Severe or No Travel** using the wind, rain and snow thresholds and the load-weight rules.
@@ -139,7 +139,7 @@ These are choices where the brief leaves room for interpretation. Details are in
 - **Ranking order:** risk comes before travel time, following the brief's preference list. Values are compared unrounded; rounding is for display only.
 - **No Travel routes:** the brief's ranking doesn't mention No Travel, so any route with a No Travel checkpoint ranks after every route without one and is flagged as not recommended.
 - **Forecast horizon:** departures must leave room for all 49 slider frames and the following precipitation timestamp inside the provider's 16 UTC calendar days. The cutoff is before 23:00 UTC on day 14 (today is day 1), and validation shows the exact date. Checkpoints beyond the forecast are shown as "No Forecast" and rank after fully covered routes. Missing heatmap data produces a visible warning for the selected hour.
-- **Three-route comparison:** successful plans always contain three distinct routes. If the provider cannot supply three after fallback searches, the app asks for different endpoints or a different departure time; it does not claim that no other route exists.
+- **Fewer than three routes:** some trips have only one sensible road (Key West → Marathon, for example). Refusing to plan them would hide the weather check the driver needs, so the app shows the routes that exist with a note. If an extra search failed rather than finding nothing new, the note says other routes may exist.
 - **Heatmap time:** slider hour 0 is the departure hour (rounded down to the hour).
 - **Displayed times** are in the viewer's time zone. The API returns UTC.
 - **US only:** places are geocoded in the US. Including Canada made TomTom read state codes as street names ("Cheyenne, WY" became "Cheyenne Way, Ontario").

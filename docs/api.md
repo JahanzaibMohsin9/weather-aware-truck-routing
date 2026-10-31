@@ -10,7 +10,7 @@ Returns `{"status": "ok"}`. Used by the frontend and the host's health check.
 
 *Implemented.*
 
-Plans three routes and scores them. If the routing API returns fewer than three, the backend makes extra requests (other route types and sideways via-points), requesting alternatives on each, and drops near-duplicates. A successful response always contains three distinct routes. If the searches cannot find three, the response is `422` with an explanation; a provider failure that prevents completing the comparison remains `502` or `504`.
+Plans three routes and scores them. If the routing API returns fewer than three, the backend makes extra requests (other route types and sideways via-points), requesting alternatives on each, and drops near-duplicates. If fewer than three distinct routes exist (some trips have only one sensible road), the response contains the routes found and a note in `notes` saying so. If one of those extra searches failed, the note says other routes may exist.
 
 ### Request
 
@@ -90,7 +90,7 @@ Trimmed example based on a real Dallas → Denver plan (one route, one checkpoin
 
 - Summary and checkpoint values are unrounded; the UI rounds them for display.
 - `recommended_route_id` is `null` when every route has a No Travel checkpoint.
-- `notes` lists anything the driver should know, such as an incomplete checkpoint forecast.
+- `notes` lists anything the driver should know, such as fewer than three distinct routes or an incomplete checkpoint forecast.
 
 ### Errors
 
@@ -99,7 +99,7 @@ Errors other than `400` have the body `{ "detail": "message for the user" }`.
 | Status | When |
 |---|---|
 | `400` | Validation failed; body is `{ "field": ["message"] }` |
-| `422` | A place couldn't be found, fewer than three distinct truck routes were found after fallback searches, or origin and destination are the same place |
+| `422` | A place couldn't be found, no truck route exists at all, or origin and destination are the same place |
 | `502` | The routing or weather provider failed after one retry. No partial plan is returned. |
 
 ## `POST /api/heatmap`

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from routing.services.errors import InvalidTrip, NoRouteFound, ProviderError, ProviderTimeout
+from routing.services.errors import NoRouteFound, ProviderError, ProviderTimeout
 from routing.services.routes import find_routes, to_planned
 from routing.services.tomtom import RawRoute
 
@@ -115,15 +115,24 @@ def test_via_without_route_uses_other_side():
     assert sorted(client.calls) == ALL_EXTRA_CALLS
 
 
-def test_rejects_incomplete_comparison_after_searching_alternatives():
+def test_returns_fewer_routes_with_a_note_when_no_others_exist():
+    # e.g. Key West -> Marathon: one road, and the sideways via points land in the sea.
     client = FakeClient(
         main=[STRAIGHT],
         by_type={"shortest": [STRAIGHT_COPY], "eco": [STRAIGHT]},
-        via={"south": [STRAIGHT_COPY], "north": [STRAIGHT]},
+        via={"south": NoRouteFound("sea"), "north": [STRAIGHT]},
     )
-    with pytest.raises(InvalidTrip, match="could only find 1 distinct truck route"):
-        run(client)
+    routes, notes = run(client)
+    assert [r.source for r in routes] == ["fastest"]
+    assert notes == [
+        "Only 1 distinct truck route for this trip: every other option found was more than 90% the same road."
+    ]
     assert sorted(client.calls) == ALL_EXTRA_CALLS
+
+
+def test_note_is_plural_for_two_routes():
+    _, notes = run(FakeClient(main=[STRAIGHT, NORTH]))
+    assert notes[0].startswith("Only 2 distinct truck routes for this trip")
 
 
 def test_alternatives_from_top_up_can_complete_the_comparison():
@@ -138,9 +147,10 @@ def test_optional_provider_failure_does_not_discard_complete_result():
 
 
 @pytest.mark.parametrize("error", [ProviderError("failed"), ProviderTimeout("slow")])
-def test_incomplete_search_reports_provider_failure_instead_of_no_alternatives(error):
-    with pytest.raises(type(error)):
-        run(FakeClient(main=[STRAIGHT], by_type={"shortest": error}))
+def test_failed_search_still_returns_routes_and_says_others_may_exist(error):
+    routes, notes = run(FakeClient(main=[STRAIGHT], by_type={"shortest": error}))
+    assert len(routes) == 1
+    assert "Some searches for alternatives failed, so other routes may exist" in notes[0]
 
 
 def test_empty_main_response_is_no_route():

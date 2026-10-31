@@ -24,7 +24,7 @@ from ..domain.geo import (
     point_at_mile,
     shared_fraction_of_samples,
 )
-from .errors import InvalidTrip, NoRouteFound, ProviderError
+from .errors import NoRouteFound, ProviderError
 from .tomtom import RawRoute, TomTomClient
 
 WANTED_ROUTES = 3
@@ -78,7 +78,12 @@ def find_routes(
     load_lbs: float,
     depart_at: datetime,
 ) -> tuple[list[PlannedRoute], list[str]]:
-    """Exactly three distinct routes, or an actionable error."""
+    """Up to three distinct routes, plus notes for the driver.
+
+    Fewer than three is a valid answer (some trips have only one sensible
+    road); the notes say so, and say whether a failed search might have hidden
+    another route.
+    """
     common = {"load_lbs": load_lbs, "depart_at": depart_at}
     routes: list[PlannedRoute] = []
 
@@ -98,6 +103,7 @@ def find_routes(
     if not routes:
         raise NoRouteFound("No truck routes returned")
 
+    failed_searches = 0
     if len(routes) < WANTED_ROUTES:
         main = routes[0]
         midpoint = point_at_mile(main.points, cumulative_miles(main.points), main.distance_mi / 2)
@@ -117,22 +123,25 @@ def find_routes(
             except NoRouteFound:  # e.g. a via point that landed in a lake
                 return [], None
             except ProviderError as exc:
-                # A failed optional search must not discard three good routes
-                # returned by the other searches.
+                # An optional search failing must not discard the routes we have.
                 return [], exc
 
         with ThreadPoolExecutor(max_workers=len(extra)) as pool:
             results = list(pool.map(fetch, [kwargs for _, kwargs in extra]))
         for (source, _), (raws, _) in zip(extra, results):  # priority order, not completion order
             add(raws, source)
-        if len(routes) < WANTED_ROUTES:
-            for _, error in results:
-                if error is not None:
-                    raise error
+        failed_searches = sum(error is not None for _, error in results)
 
+    notes = []
     if len(routes) < WANTED_ROUTES:
-        raise InvalidTrip(
-            f"We could only find {len(routes)} distinct truck route(s) for this trip after checking alternatives. "
-            "A comparison needs three routes. Try different endpoints or a different departure time."
-        )
-    return routes, []
+        found = f"{len(routes)} distinct truck route{'s' if len(routes) != 1 else ''}"
+        if failed_searches:
+            notes.append(
+                f"Showing {found}. Some searches for alternatives failed, so other routes may exist; "
+                "try again for a fuller comparison."
+            )
+        else:
+            notes.append(
+                f"Only {found} for this trip: every other option found was more than 90% the same road."
+            )
+    return routes, notes
