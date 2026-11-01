@@ -5,7 +5,7 @@ A React + Django web app that helps a truck driver choose the safest route betwe
 | | |
 |---|---|
 | Live app | https://weather-aware-truck-routing-ccb92e0eafd6.herokuapp.com |
-| Walkthrough (Loom) | *TBD* |
+| Walkthrough (Loom) | https://www.loom.com/share/aded0fb00c384155b2ae8d7b933b0526 |
 
 ## What it does
 
